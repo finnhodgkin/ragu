@@ -102,6 +102,13 @@ pub enum Command {
         #[arg(short = 'n', long)]
         name: Option<String>,
     },
+
+    /// Validate spago.yaml configuration
+    Validate {
+        /// Path to spago.yaml (defaults to ./spago.yaml)
+        #[arg(short = 'p', long)]
+        path: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

@@ -1,0 +1,245 @@
+use std::collections::HashSet;
+
+use crate::config::SpagoConfig;
+use crate::registry::PackageQuery;
+
+/// Result of configuration validation
+#[derive(Debug, Clone)]
+pub struct ValidationResult {
+    pub is_valid: bool,
+    pub errors: Vec<ValidationError>,
+    pub warnings: Vec<String>,
+}
+
+/// Validation error
+#[derive(Debug, Clone)]
+pub enum ValidationError {
+    MissingDependency {
+        package: String,
+        context: DependencyContext,
+    },
+    CircularDependency {
+        cycle: Vec<String>,
+    },
+    EmptyName,
+    InvalidPackageSetUrl(String),
+}
+
+/// Context where a dependency is declared
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DependencyContext {
+    Package,
+    Test,
+}
+
+impl ValidationResult {
+    pub fn new() -> Self {
+        Self {
+            is_valid: true,
+            errors: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    pub fn add_error(&mut self, error: ValidationError) {
+        self.is_valid = false;
+        self.errors.push(error);
+    }
+
+    pub fn add_warning(&mut self, warning: String) {
+        self.warnings.push(warning);
+    }
+}
+
+impl Default for ValidationResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Validate a spago configuration against a package set
+pub fn validate_config(config: &SpagoConfig, query: &PackageQuery) -> ValidationResult {
+    let mut result = ValidationResult::new();
+
+    // Validate package name
+    if config.package.name.is_empty() {
+        result.add_error(ValidationError::EmptyName);
+    }
+
+    // Validate package dependencies
+    for dep in &config.package.dependencies {
+        if !query.exists(dep) {
+            result.add_error(ValidationError::MissingDependency {
+                package: dep.clone(),
+                context: DependencyContext::Package,
+            });
+        }
+    }
+
+    // Validate test dependencies
+    if let Some(test) = &config.package.test {
+        for dep in &test.dependencies {
+            if !query.exists(dep) {
+                result.add_error(ValidationError::MissingDependency {
+                    package: dep.clone(),
+                    context: DependencyContext::Test,
+                });
+            }
+        }
+    }
+
+    // Check for duplicate dependencies
+    let mut seen = HashSet::new();
+    for dep in &config.package.dependencies {
+        if !seen.insert(dep) {
+            result.add_warning(format!("Duplicate dependency in package: {}", dep));
+        }
+    }
+
+    if let Some(test) = &config.package.test {
+        let mut seen = HashSet::new();
+        for dep in &test.dependencies {
+            if !seen.insert(dep) {
+                result.add_warning(format!("Duplicate dependency in test: {}", dep));
+            }
+        }
+
+        // Warn about test dependencies already in package dependencies
+        for dep in &test.dependencies {
+            if config.package.dependencies.contains(dep) {
+                result.add_warning(format!(
+                    "Test dependency '{}' already in package dependencies (redundant)",
+                    dep
+                ));
+            }
+        }
+    }
+
+    result
+}
+
+/// Check if all transitive dependencies are satisfied
+pub fn validate_transitive_deps(config: &SpagoConfig, query: &PackageQuery) -> ValidationResult {
+    let mut result = ValidationResult::new();
+
+    // For each direct dependency, check its transitive dependencies
+    for dep in &config.package.dependencies {
+        if let Ok(transitive) = query.get_transitive_dependencies(dep) {
+            for trans_dep in transitive {
+                if !query.exists(&trans_dep.name) {
+                    result.add_error(ValidationError::MissingDependency {
+                        package: trans_dep.name.clone(),
+                        context: DependencyContext::Package,
+                    });
+                }
+            }
+        }
+    }
+
+    result
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationError::MissingDependency { package, context } => {
+                let ctx = match context {
+                    DependencyContext::Package => "package dependencies",
+                    DependencyContext::Test => "test dependencies",
+                };
+                write!(
+                    f,
+                    "Package '{}' not found in package set ({})",
+                    package, ctx
+                )
+            }
+            ValidationError::CircularDependency { cycle } => {
+                write!(f, "Circular dependency detected: {}", cycle.join(" -> "))
+            }
+            ValidationError::EmptyName => {
+                write!(f, "Package name cannot be empty")
+            }
+            ValidationError::InvalidPackageSetUrl(url) => {
+                write!(f, "Invalid package set URL: {}", url)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::PackageConfig;
+    use crate::registry::{Package, PackageSet};
+    use std::collections::HashMap;
+
+    fn create_test_package_set() -> PackageSet {
+        let mut set = HashMap::new();
+
+        set.insert(
+            "prelude".to_string(),
+            Package {
+                dependencies: vec![],
+                repo: "https://github.com/purescript/purescript-prelude".to_string(),
+                version: "v6.0.0".to_string(),
+            },
+        );
+
+        set.insert(
+            "effect".to_string(),
+            Package {
+                dependencies: vec!["prelude".to_string()],
+                repo: "https://github.com/purescript/purescript-effect".to_string(),
+                version: "v4.0.0".to_string(),
+            },
+        );
+
+        set
+    }
+
+    #[test]
+    fn test_valid_config() {
+        let config = SpagoConfig {
+            package: PackageConfig {
+                name: "test".to_string(),
+                dependencies: vec!["prelude".to_string(), "effect".to_string()],
+                test: None,
+            },
+            workspace: Default::default(),
+        };
+
+        let package_set = create_test_package_set();
+        let query = PackageQuery::new(&package_set);
+        let result = validate_config(&config, &query);
+
+        assert!(result.is_valid);
+        assert_eq!(result.errors.len(), 0);
+    }
+
+    #[test]
+    fn test_missing_dependency() {
+        let config = SpagoConfig {
+            package: PackageConfig {
+                name: "test".to_string(),
+                dependencies: vec!["nonexistent".to_string()],
+                test: None,
+            },
+            workspace: Default::default(),
+        };
+
+        let package_set = create_test_package_set();
+        let query = PackageQuery::new(&package_set);
+        let result = validate_config(&config, &query);
+
+        assert!(!result.is_valid);
+        assert_eq!(result.errors.len(), 1);
+
+        match &result.errors[0] {
+            ValidationError::MissingDependency { package, context } => {
+                assert_eq!(package, "nonexistent");
+                assert_eq!(*context, DependencyContext::Package);
+            }
+            _ => panic!("Expected MissingDependency error"),
+        }
+    }
+}

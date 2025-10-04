@@ -3,6 +3,7 @@ mod info;
 mod list;
 mod search;
 mod stats;
+mod validate;
 
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -99,5 +100,6 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             println!("  Name: {:?}", name);
             Ok(())
         }
+        Command::Validate { path } => validate::execute(path, cli.force_refresh, cli.verbose),
     }
 }

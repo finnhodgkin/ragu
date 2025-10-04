@@ -130,10 +130,9 @@ pub fn load_cached_tags(ttl_hours: Option<i64>) -> Result<Option<Vec<String>>> {
     let max_age = Duration::hours(ttl);
 
     if age < max_age {
-        let remaining = max_age - age;
-        let hours = remaining.num_hours();
-        let minutes = remaining.num_minutes() % 60;
-        println!("Loaded tags from cache (fresh for {}h {}m)", hours, minutes);
+        // Cache is fresh - return silently
+        // Note: We removed the "Loaded tags from cache" message
+        // to keep output minimal by default
         Ok(Some(cached.tags))
     } else {
         // Cache is stale

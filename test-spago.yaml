@@ -1,0 +1,17 @@
+package:
+  name: test-package
+  dependencies:
+    - console
+    - effect
+    - prelude
+    - nonexistent-package
+    - another-missing
+  test:
+    main: Test.Main
+    dependencies:
+      - console
+      - missing-test-dep
+workspace:
+  packageSet:
+    url: https://raw.githubusercontent.com/purescript/package-sets/psc-0.15.15-20251004/packages.json
+  extraPackages: {}
