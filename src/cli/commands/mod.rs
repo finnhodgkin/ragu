@@ -1,5 +1,6 @@
 mod cache;
 mod info;
+mod install;
 mod list;
 mod search;
 mod stats;
@@ -71,13 +72,13 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             search::execute(&pkg_query, &query, details)
         }
         Command::Install { packages, no_deps } => {
-            println!(
-                "{} Install command not yet implemented",
-                "⚠".yellow().bold()
-            );
-            println!("  Packages: {:?}", packages);
-            println!("  No deps: {}", no_deps);
-            Ok(())
+            let package_set = get_package_set(&tag, cli.force_refresh)?;
+            tokio::runtime::Runtime::new()?.block_on(install::execute(
+                &packages,
+                no_deps,
+                &package_set,
+                cli.verbose,
+            ))
         }
         Command::Build { watch, clear } => {
             println!("{} Build command not yet implemented", "⚠".yellow().bold());
