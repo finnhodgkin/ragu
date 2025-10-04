@@ -4,6 +4,7 @@ mod install;
 mod list;
 mod search;
 mod stats;
+mod uninstall;
 mod validate;
 
 use anyhow::{Context, Result};
@@ -76,6 +77,14 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             tokio::runtime::Runtime::new()?.block_on(install::execute(
                 &packages,
                 no_deps,
+                &package_set,
+                cli.verbose,
+            ))
+        }
+        Command::Uninstall { packages } => {
+            let package_set = get_package_set(&tag, cli.force_refresh)?;
+            tokio::runtime::Runtime::new()?.block_on(uninstall::execute(
+                &packages,
                 &package_set,
                 cli.verbose,
             ))

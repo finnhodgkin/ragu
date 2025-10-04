@@ -1,11 +1,9 @@
 package:
   name: spago-rust
   dependencies:
-    - console
-    - effect
-    - facebook
-    - halogen
-    - prelude
+  - effect
+  - halogen
+  - prelude
   test:
     main: Test.Main
     dependencies: []

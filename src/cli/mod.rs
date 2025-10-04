@@ -76,6 +76,13 @@ pub enum Command {
         no_deps: bool,
     },
 
+    /// Uninstall packages
+    #[command(alias = "un")]
+    Uninstall {
+        /// Packages to uninstall
+        packages: Vec<String>,
+    },
+
     /// Build the project
     Build {
         /// Watch for changes

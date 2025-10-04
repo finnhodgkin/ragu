@@ -32,6 +32,26 @@ pub fn add_packages_to_config(config_path: &Path, new_packages: &[String]) -> Re
     Ok(())
 }
 
+/// Remove packages from spago.yaml
+pub fn remove_packages_from_config(
+    config_path: &Path,
+    packages_to_remove: &[String],
+) -> Result<()> {
+    // Load existing config
+    let mut config = load_config(config_path)?;
+
+    // Remove packages from dependencies
+    config
+        .package
+        .dependencies
+        .retain(|dep| !packages_to_remove.contains(dep));
+
+    // Write back to file
+    save_config(config_path, &config)?;
+
+    Ok(())
+}
+
 /// Load spago.yaml configuration
 fn load_config(path: &Path) -> Result<SpagoConfig> {
     let content = fs::read_to_string(path).context("Failed to read spago.yaml")?;
