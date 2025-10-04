@@ -94,6 +94,9 @@ pub enum Command {
         clear: bool,
     },
 
+    /// Output source file globs for piping to other tools
+    Sources,
+
     /// Manage cache
     Cache {
         #[command(subcommand)]

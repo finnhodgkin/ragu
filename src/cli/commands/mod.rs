@@ -1,3 +1,4 @@
+mod build;
 mod cache;
 mod info;
 mod install;
@@ -12,8 +13,7 @@ use colored::Colorize;
 
 use crate::cli::{CacheAction, Cli, Command};
 use crate::registry::{
-    get_latest_tag, get_package_set, list_available_tags, list_available_tags_with_options,
-    PackageQuery,
+    get_package_set, list_available_tags, list_available_tags_with_options, PackageQuery,
 };
 
 /// Execute the CLI command
@@ -89,12 +89,8 @@ pub fn execute_command(cli: Cli) -> Result<()> {
                 cli.verbose,
             ))
         }
-        Command::Build { watch, clear } => {
-            println!("{} Build command not yet implemented", "⚠".yellow().bold());
-            println!("  Watch: {}", watch);
-            println!("  Clear: {}", clear);
-            Ok(())
-        }
+        Command::Build { watch, clear } => build::execute(watch, clear, cli.verbose),
+        Command::Sources => build::execute_sources(cli.verbose),
         Command::Cache { action } => match action {
             CacheAction::Info => cache::info(),
             CacheAction::Clear => cache::clear(),
