@@ -34,7 +34,34 @@ pub struct WorkspaceConfig {
     #[serde(default)]
     pub package_set: Option<PackageSetConfig>,
     #[serde(default)]
-    pub extra_packages: HashMap<String, String>,
+    pub extra_packages: HashMap<String, ExtraPackage>,
+}
+
+/// Extra package configuration - can be a version string or a detailed config
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ExtraPackage {
+    /// Simple version string (e.g., "4.0.0")
+    Version(String),
+    /// Detailed package configuration
+    Config(ExtraPackageConfig),
+}
+
+/// Detailed extra package configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtraPackageConfig {
+    /// Git repository URL
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git: Option<String>,
+    /// Git reference (branch, tag, or commit hash)
+    #[serde(skip_serializing_if = "Option::is_none", rename = "ref")]
+    pub ref_: Option<String>,
+    /// Local path
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Package dependencies (if not in spago.yaml)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dependencies: Option<Vec<String>>,
 }
 
 /// Package set configuration

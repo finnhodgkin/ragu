@@ -6,7 +6,9 @@ use std::sync::Arc;
 use tokio::task;
 
 use super::cache::GlobalPackageCache;
+use super::extra::install_extra_package;
 use super::git::{fetch_package, PackageInfo};
+use crate::config::{ExtraPackage, SpagoConfig};
 use crate::registry::{Package, PackageQuery, PackageSet};
 
 /// Result of an installation operation
@@ -43,6 +45,17 @@ impl InstallManager {
         package_names: &[String],
         package_set: &PackageSet,
     ) -> Result<InstallResult> {
+        self.install_packages_with_config(package_names, package_set, None)
+            .await
+    }
+
+    /// Install specified packages with optional extra packages configuration
+    pub async fn install_packages_with_config(
+        &self,
+        package_names: &[String],
+        package_set: &PackageSet,
+        config: Option<&SpagoConfig>,
+    ) -> Result<InstallResult> {
         // Ensure .spago directory exists
         fs::create_dir_all(&self.spago_dir).context("Failed to create .spago directory")?;
 
@@ -50,8 +63,22 @@ impl InstallManager {
         let mut all_packages = HashSet::new();
         let mut processed = HashSet::new();
 
+        // Track extra packages separately
+        let mut extra_packages_installed = Vec::new();
+
         // Collect all packages to install (including dependencies)
         for package_name in package_names {
+            // Check if this is an extra package first
+            if let Some(config) = config {
+                if let Some(extra_package) = config.workspace.extra_packages.get(package_name) {
+                    // Handle extra package
+                    install_extra_package(package_name, extra_package, &self.spago_dir)?;
+                    extra_packages_installed.push(package_name.to_string());
+                    continue;
+                }
+            }
+
+            // Regular package from package set
             self.collect_dependencies_recursive(
                 package_name,
                 package_set,
@@ -95,6 +122,18 @@ impl InstallManager {
                     errors.push(e.to_string());
                 }
             }
+        }
+
+        // Add extra packages to the installed list
+        for extra_package in extra_packages_installed {
+            // Create a dummy PackageInfo for extra packages
+            let package_info = PackageInfo {
+                name: extra_package.clone(),
+                version: "extra".to_string(),
+                repo_url: "extra".to_string(),
+                local_path: self.spago_dir.join(&extra_package),
+            };
+            installed.push(package_info);
         }
 
         Ok(InstallResult {
