@@ -35,19 +35,7 @@ async fn install_all_from_config(spago_dir: &PathBuf, verbose: bool) -> Result<(
     }
 
     // Load package set
-    let package_set_url = config
-        .package_set_url()
-        .context("Package set URL not found in spago.yaml")?;
-
-    let package_set_tag = crate::config::extract_tag_from_url(package_set_url)
-        .context("Failed to extract tag from package set URL")?;
-
-    if verbose {
-        println!("Package set tag: {}", package_set_tag.cyan());
-        println!("Loading package set...");
-    }
-
-    let package_set = crate::registry::get_package_set(&package_set_tag, false)?;
+    let package_set = config.package_set()?;
 
     // Install all dependencies with extra packages support
     let result = install_all_dependencies(&config, &package_set, spago_dir).await?;

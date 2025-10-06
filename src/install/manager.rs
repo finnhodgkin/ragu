@@ -66,7 +66,7 @@ impl InstallManager {
         })
     }
 
-    /// Install specified packages with optional extra packages configuration
+    /// Install all packages in the spago config
     pub async fn install_packages(
         &self,
         package_set: &PackageSet,

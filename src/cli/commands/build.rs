@@ -2,11 +2,12 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::collections::HashSet;
 use std::fs;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use crate::config::SpagoConfig;
 use crate::install::InstallManager;
-use crate::registry::{PackageName, PackageQuery};
+use crate::registry::{PackageName, PackageQuery, PackageSet};
 
 /// Build command result containing source globs for each dependency
 #[derive(Debug)]
@@ -30,19 +31,28 @@ pub struct DependencyGlob {
 }
 
 /// Execute the build command
-pub fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
+pub async fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
     if verbose {
         println!("{} Build command executing", "→".cyan());
         println!("  Watch: {}", watch);
         println!("  Clear: {}", clear);
     }
+    let spago_dir = PathBuf::from(".spago");
+
+    let installer = InstallManager::new(&spago_dir)?;
 
     // Load spago.yaml configuration
     let config =
         crate::config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
+    let package_set = config.package_set()?;
+
+    installer
+        .install_packages(&config.package_set()?, &config)
+        .await?;
+
     // Generate source globs for dependencies
-    let sources = generate_sources(&config, verbose)?;
+    let sources = generate_sources(&config, Some(package_set), verbose)?;
 
     if verbose {
         println!(
@@ -55,13 +65,63 @@ pub fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
         }
     }
 
-    // TODO: Implement actual purs compiler invocation
-    println!("{} Build sources generated successfully", "✓".green());
-    println!("  Main sources: {}", sources.main_sources);
-    println!(
-        "  Dependencies: {} packages",
-        sources.dependency_globs.len()
-    );
+    // Collect all source globs into a Vec
+    let mut all_sources = sources
+        .dependency_globs
+        .iter()
+        .map(|g| g.glob_pattern.clone())
+        .collect::<Vec<String>>();
+
+    all_sources.push(sources.main_sources.clone());
+    // Build the purs compiler command
+    let mut command = std::process::Command::new("purs");
+    command.arg("compile");
+
+    // Add all source globs as arguments
+    command.args(&all_sources);
+
+    if verbose {
+        println!("{} Running purs compiler...", "→".cyan());
+    }
+
+    // Run the compiler with streaming output
+    let mut child = command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("Failed to start purs compiler")?;
+
+    // Stream stdout
+    if let Some(stdout) = child.stdout.take() {
+        let stdout_reader = std::io::BufReader::new(stdout);
+        for line in stdout_reader.lines() {
+            if let Ok(line) = line {
+                println!("{}", line);
+            }
+        }
+    }
+
+    // Stream stderr
+    if let Some(stderr) = child.stderr.take() {
+        let stderr_reader = std::io::BufReader::new(stderr);
+        for line in stderr_reader.lines() {
+            if let Ok(line) = line {
+                eprintln!("{}", line);
+            }
+        }
+    }
+
+    // Wait for completion
+    let status = child.wait().context("Failed to wait for purs compiler")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("Compilation failed"));
+    }
+
+    println!("{} Compilation successful", "✓".green());
+    if verbose {
+        println!("  Compiled {} source files", all_sources.len());
+    }
 
     Ok(())
 }
@@ -77,7 +137,7 @@ pub fn execute_sources(verbose: bool) -> Result<()> {
         crate::config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
     // Generate source globs for dependencies
-    let sources = generate_sources(&config, verbose)?;
+    let sources = generate_sources(&config, None, verbose)?;
 
     // Output main sources
     println!("{}", sources.main_sources);
@@ -91,7 +151,11 @@ pub fn execute_sources(verbose: bool) -> Result<()> {
 }
 
 /// Generate source globs for all dependencies
-pub fn generate_sources(config: &SpagoConfig, verbose: bool) -> Result<BuildSources> {
+pub fn generate_sources(
+    config: &SpagoConfig,
+    package_set: Option<PackageSet>,
+    verbose: bool,
+) -> Result<BuildSources> {
     let spago_dir = Path::new(".spago");
 
     if !spago_dir.exists() {
@@ -111,7 +175,10 @@ pub fn generate_sources(config: &SpagoConfig, verbose: bool) -> Result<BuildSour
         );
     }
 
-    let package_set = config.package_set()?;
+    let package_set = match package_set {
+        None => config.package_set()?,
+        Some(package_set) => package_set,
+    };
 
     let mut all_dependencies = HashSet::new();
     let mut processed_packages: HashSet<PackageName> = HashSet::new();
@@ -197,7 +264,6 @@ fn find_package_directory(package_name: &PackageName, spago_dir: &Path) -> Resul
 
         if path.is_dir() {
             let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
             // Check if this directory matches the package name
             // Package directories are typically named like "package-name-version"
             if dir_name == package_name.0 {
@@ -206,7 +272,7 @@ fn find_package_directory(package_name: &PackageName, spago_dir: &Path) -> Resul
         }
     }
 
-    Ok(None)
+    Err(anyhow::anyhow!("Package not found in .spago"))
 }
 
 #[cfg(test)]
@@ -292,7 +358,7 @@ mod tests {
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
-        let result = generate_sources(&config, false).unwrap();
+        let result = generate_sources(&config, None, false).unwrap();
 
         // Restore original directory
         std::env::set_current_dir(original_dir).unwrap();
