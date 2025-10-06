@@ -15,7 +15,7 @@ pub fn execute(path: Option<String>, force_refresh: bool, verbose: bool) -> Resu
     let config = load_config(config_path)?;
 
     if verbose {
-        println!("Package: {}", config.package.name.bright_cyan());
+        println!("Package: {}", config.package.name.0.bright_cyan());
         println!("Dependencies: {}", config.package.dependencies.len());
 
         if let Some(test) = &config.package.test {

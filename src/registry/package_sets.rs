@@ -1,5 +1,10 @@
+use std::collections::HashMap;
+
 use anyhow::{Context, Result};
 use serde::Deserialize;
+
+use crate::registry::types::{PackageInSet, PackageName, PackageSetPackage};
+use crate::registry::{clear_cache_for_tag, Package};
 
 use super::cache::{load_cached_tags, load_from_cache, save_cached_tags, save_to_cache};
 use super::types::PackageSet;
@@ -26,6 +31,22 @@ fn fetch_from_github(tag: &str) -> Result<PackageSet> {
 
     let package_set: PackageSet = response
         .json()
+        .map(|packages: HashMap<PackageName, PackageInSet>| {
+            packages
+                .into_iter()
+                .map(|(name, package)| {
+                    (
+                        name.clone(),
+                        Package::Remote(PackageSetPackage {
+                            name: name.clone(),
+                            dependencies: package.dependencies,
+                            repo: package.repo,
+                            version: package.version,
+                        }),
+                    )
+                })
+                .collect()
+        })
         .context("Failed to parse package set JSON")?;
 
     Ok(package_set)
@@ -43,17 +64,21 @@ fn fetch_from_github(tag: &str) -> Result<PackageSet> {
 /// * `force_refresh` - If true, bypass cache and fetch fresh from GitHub
 pub fn get_package_set(tag: &str, force_refresh: bool) -> Result<PackageSet> {
     // Try loading from cache first (unless force refresh)
-    if !force_refresh {
-        if let Some(cached) = load_from_cache(tag)? {
-            return Ok(cached);
-        }
-    }
 
-    // Fetch from GitHub
-    let package_set = fetch_from_github(tag)?;
+    let package_set = match load_from_cache(tag) {
+        Ok(Some(cached)) if !force_refresh => cached,
+        Ok(_) => fetch_from_github(tag)?,
+        Err(_) => {
+            clear_cache_for_tag(tag)?;
+            fetch_from_github(tag)?
+        }
+    };
 
     // Save to cache
     save_to_cache(tag, &package_set)?;
+
+    // Add extra packages. These won't be saved to cache because they are not part of the package set.
+    // add_extra_packages(&package_set);
 
     Ok(package_set)
 }

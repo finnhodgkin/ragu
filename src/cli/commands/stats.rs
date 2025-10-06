@@ -24,8 +24,16 @@ pub fn execute(query: &PackageQuery, tag: &str) -> Result<()> {
         "Average dependencies:".dimmed(),
         stats.avg_dependencies
     );
-    println!("  {} {}", "Max dependencies:".dimmed(), stats.max_dependencies);
-    println!("  {} {}", "Min dependencies:".dimmed(), stats.min_dependencies);
+    println!(
+        "  {} {}",
+        "Max dependencies:".dimmed(),
+        stats.max_dependencies
+    );
+    println!(
+        "  {} {}",
+        "Min dependencies:".dimmed(),
+        stats.min_dependencies
+    );
     println!(
         "  {} {}",
         "Packages with no deps:".dimmed(),
@@ -33,10 +41,7 @@ pub fn execute(query: &PackageQuery, tag: &str) -> Result<()> {
     );
 
     // Show packages with most dependencies
-    let mut packages: Vec<_> = query
-        .filter(|_, _| true)
-        .into_iter()
-        .collect();
+    let mut packages: Vec<_> = query.filter(|_| true).into_iter().collect();
     packages.sort_by(|a, b| b.dep_count().cmp(&a.dep_count()));
 
     println!("\n{} Top packages by dependencies:\n", "📈".bold());
@@ -45,11 +50,10 @@ pub fn execute(query: &PackageQuery, tag: &str) -> Result<()> {
             "  {} {} {}",
             format!("{:2}", pkg.dep_count()).yellow(),
             "→".dimmed(),
-            pkg.name
+            pkg.name().0
         );
     }
 
     println!();
     Ok(())
 }
-

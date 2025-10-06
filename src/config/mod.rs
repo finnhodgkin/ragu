@@ -2,9 +2,7 @@ mod types;
 mod update;
 mod validation;
 
-pub use types::{
-    ExtraPackage, ExtraPackageConfig, PackageConfig, SpagoConfig, TestConfig, WorkspaceConfig,
-};
+pub use types::{ExtraPackageConfig, PackageConfig, SpagoConfig, TestConfig, WorkspaceConfig};
 pub use update::{add_packages_to_config, remove_packages_from_config};
 pub use validation::{
     validate_config, validate_transitive_deps, ValidationError, ValidationResult,

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::config::SpagoConfig;
-use crate::registry::PackageQuery;
+use crate::registry::{PackageName, PackageQuery};
 
 /// Result of configuration validation
 #[derive(Debug, Clone)]
@@ -15,7 +15,7 @@ pub struct ValidationResult {
 #[derive(Debug, Clone)]
 pub enum ValidationError {
     MissingDependency {
-        package: String,
+        package: PackageName,
         context: DependencyContext,
     },
     CircularDependency {
@@ -62,7 +62,7 @@ pub fn validate_config(config: &SpagoConfig, query: &PackageQuery) -> Validation
     let mut result = ValidationResult::new();
 
     // Validate package name
-    if config.package.name.is_empty() {
+    if config.package.name.0.is_empty() {
         result.add_error(ValidationError::EmptyName);
     }
 
@@ -92,7 +92,7 @@ pub fn validate_config(config: &SpagoConfig, query: &PackageQuery) -> Validation
     let mut seen = HashSet::new();
     for dep in &config.package.dependencies {
         if !seen.insert(dep) {
-            result.add_warning(format!("Duplicate dependency in package: {}", dep));
+            result.add_warning(format!("Duplicate dependency in package: {}", dep.0));
         }
     }
 
@@ -100,7 +100,7 @@ pub fn validate_config(config: &SpagoConfig, query: &PackageQuery) -> Validation
         let mut seen = HashSet::new();
         for dep in &test.dependencies {
             if !seen.insert(dep) {
-                result.add_warning(format!("Duplicate dependency in test: {}", dep));
+                result.add_warning(format!("Duplicate dependency in test: {}", dep.0));
             }
         }
 
@@ -109,7 +109,7 @@ pub fn validate_config(config: &SpagoConfig, query: &PackageQuery) -> Validation
             if config.package.dependencies.contains(dep) {
                 result.add_warning(format!(
                     "Test dependency '{}' already in package dependencies (redundant)",
-                    dep
+                    dep.0
                 ));
             }
         }
@@ -126,9 +126,9 @@ pub fn validate_transitive_deps(config: &SpagoConfig, query: &PackageQuery) -> V
     for dep in &config.package.dependencies {
         if let Ok(transitive) = query.get_transitive_dependencies(dep) {
             for trans_dep in transitive {
-                if !query.exists(&trans_dep.name) {
+                if !query.exists(&trans_dep.name()) {
                     result.add_error(ValidationError::MissingDependency {
-                        package: trans_dep.name.clone(),
+                        package: trans_dep.name().clone(),
                         context: DependencyContext::Package,
                     });
                 }
@@ -150,7 +150,7 @@ impl std::fmt::Display for ValidationError {
                 write!(
                     f,
                     "Package '{}' not found in package set ({})",
-                    package, ctx
+                    package.0, ctx
                 )
             }
             ValidationError::CircularDependency { cycle } => {
@@ -170,28 +170,30 @@ impl std::fmt::Display for ValidationError {
 mod tests {
     use super::*;
     use crate::config::PackageConfig;
-    use crate::registry::{Package, PackageSet};
+    use crate::registry::{Package, PackageSet, PackageSetPackage};
     use std::collections::HashMap;
 
     fn create_test_package_set() -> PackageSet {
         let mut set = HashMap::new();
 
         set.insert(
-            "prelude".to_string(),
-            Package {
+            PackageName::new("prelude"),
+            Package::Remote(PackageSetPackage {
+                name: PackageName::new("prelude"),
                 dependencies: vec![],
                 repo: "https://github.com/purescript/purescript-prelude".to_string(),
                 version: "v6.0.0".to_string(),
-            },
+            }),
         );
 
         set.insert(
-            "effect".to_string(),
-            Package {
-                dependencies: vec!["prelude".to_string()],
+            PackageName::new("effect"),
+            Package::Remote(PackageSetPackage {
+                name: PackageName::new("effect"),
+                dependencies: vec![PackageName::new("prelude")],
                 repo: "https://github.com/purescript/purescript-effect".to_string(),
                 version: "v4.0.0".to_string(),
-            },
+            }),
         );
 
         set
@@ -201,8 +203,8 @@ mod tests {
     fn test_valid_config() {
         let config = SpagoConfig {
             package: PackageConfig {
-                name: "test".to_string(),
-                dependencies: vec!["prelude".to_string(), "effect".to_string()],
+                name: PackageName::new("test"),
+                dependencies: vec![PackageName::new("prelude"), PackageName::new("effect")],
                 test: None,
             },
             workspace: Default::default(),
@@ -220,8 +222,8 @@ mod tests {
     fn test_missing_dependency() {
         let config = SpagoConfig {
             package: PackageConfig {
-                name: "test".to_string(),
-                dependencies: vec!["nonexistent".to_string()],
+                name: PackageName::new("test"),
+                dependencies: vec![PackageName::new("nonexistent")],
                 test: None,
             },
             workspace: Default::default(),
@@ -236,7 +238,7 @@ mod tests {
 
         match &result.errors[0] {
             ValidationError::MissingDependency { package, context } => {
-                assert_eq!(package, "nonexistent");
+                assert_eq!(*package, PackageName::new("nonexistent"));
                 assert_eq!(*context, DependencyContext::Package);
             }
             _ => panic!("Expected MissingDependency error"),

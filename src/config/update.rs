@@ -4,15 +4,16 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-use crate::config::{PackageConfig, SpagoConfig};
+use crate::{config::SpagoConfig, registry::PackageName};
 
 /// Update spago.yaml with new packages
-pub fn add_packages_to_config(config_path: &Path, new_packages: &[String]) -> Result<()> {
+pub fn add_packages_to_config(config_path: &Path, new_packages: &[PackageName]) -> Result<()> {
     // Load existing config
     let mut config = load_config(config_path)?;
 
     // Get current dependencies as a set
-    let mut current_deps: HashSet<String> = config.package.dependencies.iter().cloned().collect();
+    let mut current_deps: HashSet<PackageName> =
+        config.package.dependencies.iter().cloned().collect();
 
     // Add new packages to the set
     for package in new_packages {
@@ -20,7 +21,7 @@ pub fn add_packages_to_config(config_path: &Path, new_packages: &[String]) -> Re
     }
 
     // Convert back to sorted vector
-    let mut updated_deps: Vec<String> = current_deps.into_iter().collect();
+    let mut updated_deps: Vec<PackageName> = current_deps.into_iter().collect();
     updated_deps.sort();
 
     // Update the config
@@ -35,7 +36,7 @@ pub fn add_packages_to_config(config_path: &Path, new_packages: &[String]) -> Re
 /// Remove packages from spago.yaml
 pub fn remove_packages_from_config(
     config_path: &Path,
-    packages_to_remove: &[String],
+    packages_to_remove: &Vec<PackageName>,
 ) -> Result<()> {
     // Load existing config
     let mut config = load_config(config_path)?;

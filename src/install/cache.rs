@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::registry::get_cache_dir;
+use crate::registry::{get_cache_dir, PackageName};
 
 /// Global package cache entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedPackage {
-    pub name: String,
+    pub name: PackageName,
     pub version: String,
     pub repo_url: String,
     pub cached_path: PathBuf,
@@ -22,6 +22,8 @@ pub struct GlobalPackageCache {
     cache_dir: PathBuf,
     index_path: PathBuf,
 }
+
+type Index = HashMap<PackageName, CachedPackage>;
 
 impl GlobalPackageCache {
     pub fn new() -> Result<Self> {
@@ -39,21 +41,20 @@ impl GlobalPackageCache {
     }
 
     /// Load the cache index
-    fn load_index(&self) -> Result<HashMap<String, CachedPackage>> {
+    fn load_index(&self) -> Result<Index> {
         if !self.index_path.exists() {
             return Ok(HashMap::new());
         }
 
         let content = fs::read_to_string(&self.index_path).context("Failed to read cache index")?;
 
-        let index: HashMap<String, CachedPackage> =
-            serde_json::from_str(&content).context("Failed to parse cache index")?;
+        let index: Index = serde_json::from_str(&content).context("Failed to parse cache index")?;
 
         Ok(index)
     }
 
     /// Save the cache index
-    fn save_index(&self, index: &HashMap<String, CachedPackage>) -> Result<()> {
+    fn save_index(&self, index: &Index) -> Result<()> {
         let content =
             serde_json::to_string_pretty(index).context("Failed to serialize cache index")?;
 
@@ -63,7 +64,7 @@ impl GlobalPackageCache {
     }
 
     /// Check if a package is cached with the correct version
-    pub fn is_cached(&self, name: &str, version: &str) -> Result<bool> {
+    pub fn is_cached(&self, name: &PackageName, version: &str) -> Result<bool> {
         let index = self.load_index()?;
         Ok(index
             .get(name)
@@ -72,7 +73,7 @@ impl GlobalPackageCache {
     }
 
     /// Get cached package path
-    pub fn get_cached_path(&self, name: &str, version: &str) -> Result<Option<PathBuf>> {
+    pub fn get_cached_path(&self, name: &PackageName, version: &str) -> Result<Option<PathBuf>> {
         let index = self.load_index()?;
         Ok(index
             .get(name)
@@ -81,8 +82,13 @@ impl GlobalPackageCache {
     }
 
     /// Add a package to the cache
-    pub fn cache_package(&self, name: &str, version: &str, source_path: &Path) -> Result<PathBuf> {
-        let cached_name = format!("{}-{}", name, version);
+    pub fn cache_package(
+        &self,
+        name: &PackageName,
+        version: &str,
+        source_path: &Path,
+    ) -> Result<PathBuf> {
+        let cached_name = format!("{}-{}", name.0, version);
         let cached_path = self.cache_dir.join(&cached_name);
 
         // Copy the package to cache
@@ -95,9 +101,9 @@ impl GlobalPackageCache {
         // Update index
         let mut index = self.load_index()?;
         index.insert(
-            name.to_string(),
+            name.clone(),
             CachedPackage {
-                name: name.to_string(),
+                name: name.clone(),
                 version: version.to_string(),
                 repo_url: String::new(), // Will be filled by caller
                 cached_path: cached_path.clone(),
@@ -110,7 +116,12 @@ impl GlobalPackageCache {
     }
 
     /// Copy a package from cache to destination
-    pub fn copy_from_cache(&self, name: &str, version: &str, dest_path: &Path) -> Result<()> {
+    pub fn copy_from_cache(
+        &self,
+        name: &PackageName,
+        version: &str,
+        dest_path: &Path,
+    ) -> Result<()> {
         if let Some(cached_path) = self.get_cached_path(name, version)? {
             if dest_path.exists() {
                 fs::remove_dir_all(dest_path).context("Failed to remove existing destination")?;
@@ -118,7 +129,7 @@ impl GlobalPackageCache {
 
             copy_dir_all(&cached_path, dest_path).context("Failed to copy from cache")?;
         } else {
-            anyhow::bail!("Package {} version {} not found in cache", name, version);
+            anyhow::bail!("Package {} version {} not found in cache", name.0, version);
         }
 
         Ok(())

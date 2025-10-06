@@ -5,6 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::SpagoConfig;
+use crate::install::InstallManager;
+use crate::registry::{PackageName, PackageQuery};
 
 /// Build command result containing source globs for each dependency
 #[derive(Debug)]
@@ -109,43 +111,28 @@ pub fn generate_sources(config: &SpagoConfig, verbose: bool) -> Result<BuildSour
         );
     }
 
-    let mut dependency_globs = Vec::new();
-    let mut processed_packages: HashSet<String> = HashSet::new();
+    let package_set = config.package_set()?;
 
-    // Generate globs for each dependency (including transitive ones)
+    let mut all_dependencies = HashSet::new();
+    let mut processed_packages: HashSet<PackageName> = HashSet::new();
+
+    let manager = InstallManager::new(spago_dir)?;
+    let query = PackageQuery::new(&package_set);
+
     for dep_name in package_deps {
-        if processed_packages.contains(dep_name) {
-            continue;
-        }
-
-        if let Some(glob) = generate_dependency_glob(dep_name, spago_dir, verbose)? {
-            dependency_globs.push(glob);
-            processed_packages.insert(dep_name.to_string());
-        }
+        manager.collect_dependencies_recursive(
+            &dep_name,
+            &query,
+            &mut all_dependencies,
+            &mut processed_packages,
+        )?;
     }
 
-    // Also scan for any other packages that might be transitive dependencies
-    // This is a fallback to catch any packages that weren't in the direct dependencies
-    if let Ok(entries) = std::fs::read_dir(spago_dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_dir() {
-                    if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-                        // Extract package name from directory name (format: package-name-version)
-                        if let Some(package_name) = extract_package_name_from_dir(dir_name) {
-                            if !processed_packages.contains(&package_name) {
-                                if let Some(glob) =
-                                    generate_dependency_glob(&package_name, spago_dir, verbose)?
-                                {
-                                    dependency_globs.push(glob);
-                                    processed_packages.insert(package_name);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    let mut dependency_globs = Vec::new();
+    // Generate globs for each dependency (including transitive ones)
+    for dep_name in all_dependencies {
+        if let Some(glob) = generate_dependency_glob(&dep_name, spago_dir, verbose)? {
+            dependency_globs.push(glob);
         }
     }
 
@@ -168,7 +155,7 @@ pub fn generate_sources(config: &SpagoConfig, verbose: bool) -> Result<BuildSour
 
 /// Generate a glob pattern for a specific dependency
 fn generate_dependency_glob(
-    package_name: &str,
+    package_name: &PackageName,
     spago_dir: &Path,
     verbose: bool,
 ) -> Result<Option<DependencyGlob>> {
@@ -182,47 +169,26 @@ fn generate_dependency_glob(
             let glob_pattern = format!("{}/**/*.purs", src_dir.display());
 
             if verbose {
-                println!("  {} -> {}", package_name, glob_pattern);
+                println!("  {} -> {}", package_name.0, glob_pattern);
             }
 
             return Ok(Some(DependencyGlob {
-                package_name: package_name.to_string(),
+                package_name: package_name.0.clone(),
                 glob_pattern,
                 local_path: dir,
             }));
         } else if verbose {
-            println!("  {} -> No src directory found", package_name);
+            println!("  {} -> No src directory found", package_name.0);
         }
     } else if verbose {
-        println!("  {} -> Package not found in .spago", package_name);
+        println!("  {} -> Package not found in .spago", package_name.0);
     }
 
     Ok(None)
 }
 
-/// Extract package name from directory name (format: package-name-version)
-fn extract_package_name_from_dir(dir_name: &str) -> Option<String> {
-    // Find the last dash that's followed by a version number
-    // This handles cases like "package-name-1.0.0" or "package-name-v1.0.0"
-    let parts: Vec<&str> = dir_name.split('-').collect();
-    if parts.len() >= 2 {
-        // Try to find where the version starts
-        for i in (1..parts.len()).rev() {
-            let potential_version = &parts[i..].join("-");
-            // Check if this looks like a version (contains digits and dots)
-            if potential_version.chars().any(|c| c.is_ascii_digit()) {
-                let package_name = parts[..i].join("-");
-                if !package_name.is_empty() {
-                    return Some(package_name);
-                }
-            }
-        }
-    }
-    None
-}
-
 /// Find the installed package directory in .spago
-fn find_package_directory(package_name: &str, spago_dir: &Path) -> Result<Option<PathBuf>> {
+fn find_package_directory(package_name: &PackageName, spago_dir: &Path) -> Result<Option<PathBuf>> {
     let entries = fs::read_dir(spago_dir).context("Failed to read .spago directory")?;
 
     for entry in entries {
@@ -234,7 +200,7 @@ fn find_package_directory(package_name: &str, spago_dir: &Path) -> Result<Option
 
             // Check if this directory matches the package name
             // Package directories are typically named like "package-name-version"
-            if dir_name.starts_with(package_name) {
+            if dir_name == package_name.0 {
                 return Ok(Some(path));
             }
         }
@@ -262,7 +228,8 @@ mod tests {
         // Create a test .purs file
         fs::write(src_dir.join("Test.purs"), "module Test where").unwrap();
 
-        let result = generate_dependency_glob("test-package", spago_dir, false).unwrap();
+        let result =
+            generate_dependency_glob(&PackageName::new("test-package"), spago_dir, false).unwrap();
 
         assert!(result.is_some());
         let glob = result.unwrap();
@@ -283,7 +250,7 @@ mod tests {
         fs::create_dir_all(spago_dir.join("other-package-1.0.0")).unwrap();
 
         // Test finding existing package
-        let result = find_package_directory("package-a", spago_dir).unwrap();
+        let result = find_package_directory(&PackageName::new("package-a"), spago_dir).unwrap();
         assert!(result.is_some());
         assert!(result
             .unwrap()
@@ -291,7 +258,7 @@ mod tests {
             .contains("package-a-1.0.0"));
 
         // Test finding non-existing package
-        let result = find_package_directory("nonexistent", spago_dir).unwrap();
+        let result = find_package_directory(&PackageName::new("nonexistent"), spago_dir).unwrap();
         assert!(result.is_none());
     }
 
@@ -314,8 +281,8 @@ mod tests {
         // Create mock config
         let config = SpagoConfig {
             package: crate::config::PackageConfig {
-                name: "test-project".to_string(),
-                dependencies: vec!["package-a".to_string(), "package-b".to_string()],
+                name: PackageName::new("test-project"),
+                dependencies: vec![PackageName::new("package-a"), PackageName::new("package-b")],
                 test: None,
             },
             workspace: crate::config::WorkspaceConfig::default(),

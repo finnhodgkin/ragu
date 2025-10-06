@@ -8,15 +8,42 @@ use tokio::task;
 use super::cache::GlobalPackageCache;
 use super::extra::install_extra_package;
 use super::git::{fetch_package, PackageInfo};
-use crate::config::{ExtraPackage, SpagoConfig};
-use crate::registry::{Package, PackageQuery, PackageSet};
+use crate::config::{ExtraPackageConfig, SpagoConfig};
+use crate::registry::{Package, PackageName, PackageQuery, PackageSet};
 
 /// Result of an installation operation
 #[derive(Debug)]
 pub struct InstallResult {
-    pub installed: Vec<PackageInfo>,
-    pub skipped: Vec<String>,
+    pub installed: Vec<InstalledPackage>,
     pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum InstalledPackage {
+    Git(PackageInfo),
+    Local(LocalPackageInfo),
+}
+
+impl InstalledPackage {
+    pub fn name(&self) -> &PackageName {
+        match self {
+            InstalledPackage::Git(package) => &package.name,
+            InstalledPackage::Local(package) => &package.name,
+        }
+    }
+
+    pub fn version(&self) -> Option<&String> {
+        match self {
+            InstalledPackage::Git(package) => Some(&package.version),
+            InstalledPackage::Local(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalPackageInfo {
+    pub name: PackageName,
+    pub path: PathBuf,
 }
 
 impl InstallResult {
@@ -39,22 +66,11 @@ impl InstallManager {
         })
     }
 
-    /// Install specified packages and their dependencies
+    /// Install specified packages with optional extra packages configuration
     pub async fn install_packages(
         &self,
-        package_names: &[String],
         package_set: &PackageSet,
-    ) -> Result<InstallResult> {
-        self.install_packages_with_config(package_names, package_set, None)
-            .await
-    }
-
-    /// Install specified packages with optional extra packages configuration
-    pub async fn install_packages_with_config(
-        &self,
-        package_names: &[String],
-        package_set: &PackageSet,
-        config: Option<&SpagoConfig>,
+        config: &SpagoConfig,
     ) -> Result<InstallResult> {
         // Ensure .spago directory exists
         fs::create_dir_all(&self.spago_dir).context("Failed to create .spago directory")?;
@@ -63,25 +79,10 @@ impl InstallManager {
         let mut all_packages = HashSet::new();
         let mut processed = HashSet::new();
 
-        // Track extra packages separately
-        let mut extra_packages_installed = Vec::new();
-
         // Collect all packages to install (including dependencies)
-        for package_name in package_names {
-            // Check if this is an extra package first
-            if let Some(config) = config {
-                if let Some(extra_package) = config.workspace.extra_packages.get(package_name) {
-                    // Handle extra package
-                    install_extra_package(package_name, extra_package, &self.spago_dir)?;
-                    extra_packages_installed.push(package_name.to_string());
-                    continue;
-                }
-            }
-
-            // Regular package from package set
+        for package_name in config.package_dependencies() {
             self.collect_dependencies_recursive(
                 package_name,
-                package_set,
                 &query,
                 &mut all_packages,
                 &mut processed,
@@ -108,119 +109,103 @@ impl InstallManager {
 
         // Wait for all tasks to complete
         let mut installed = Vec::new();
-        let mut skipped = Vec::new();
         let mut errors = Vec::new();
 
         for task in tasks {
             match task.await? {
-                Ok(package_info) => {
-                    if let Some(info) = package_info {
-                        installed.push(info);
+                Ok(package_info) => match package_info {
+                    Some(git_installed @ InstalledPackage::Git(_)) => {
+                        installed.push(git_installed);
                     }
-                }
+                    Some(local_installed @ InstalledPackage::Local(_)) => {
+                        installed.push(local_installed);
+                    }
+                    None => {}
+                },
                 Err(e) => {
                     errors.push(e.to_string());
                 }
             }
         }
 
-        // Add extra packages to the installed list
-        for extra_package in extra_packages_installed {
-            // Create a dummy PackageInfo for extra packages
-            let package_info = PackageInfo {
-                name: extra_package.clone(),
-                version: "extra".to_string(),
-                repo_url: "extra".to_string(),
-                local_path: self.spago_dir.join(&extra_package),
-            };
-            installed.push(package_info);
-        }
-
-        Ok(InstallResult {
-            installed,
-            skipped,
-            errors,
-        })
+        Ok(InstallResult { installed, errors })
     }
 
     /// Collect all dependencies recursively
-    fn collect_dependencies_recursive(
+    pub fn collect_dependencies_recursive(
         &self,
-        package_name: &str,
-        package_set: &PackageSet,
+        package_name: &PackageName,
         query: &PackageQuery,
-        all_packages: &mut HashSet<String>,
-        processed: &mut HashSet<String>,
+        all_packages: &mut HashSet<PackageName>,
+        processed: &mut HashSet<PackageName>,
     ) -> Result<()> {
         if processed.contains(package_name) {
             return Ok(());
         }
 
-        processed.insert(package_name.to_string());
+        processed.insert(package_name.clone());
 
         // Get package info from package set
-        let package = package_set.get(package_name).ok_or_else(|| {
-            anyhow::anyhow!("Package '{}' not found in package set", package_name)
+        let package = query.get(package_name).ok_or_else(|| {
+            anyhow::anyhow!("Package '{}' not found in package set", package_name.0)
         })?;
 
         // Add dependencies first
-        for dep_name in &package.dependencies {
-            self.collect_dependencies_recursive(
-                dep_name,
-                package_set,
-                query,
-                all_packages,
-                processed,
-            )?;
+        for dep_name in package.dependencies().iter() {
+            self.collect_dependencies_recursive(dep_name, query, all_packages, processed)?;
         }
 
         // Add this package
-        all_packages.insert(package_name.to_string());
+        all_packages.insert(package_name.clone());
         Ok(())
     }
 
     /// Install a single package (used by parallel tasks)
     async fn install_single_package(
-        package_name: &str,
+        package_name: &PackageName,
         package_set: &PackageSet,
         spago_dir: &Path,
         global_cache: &GlobalPackageCache,
-    ) -> Result<Option<PackageInfo>> {
+    ) -> Result<Option<InstalledPackage>> {
         let package = package_set.get(package_name).ok_or_else(|| {
-            anyhow::anyhow!("Package '{}' not found in package set", package_name)
+            anyhow::anyhow!("Package '{}' not found in package set", package_name.0)
         })?;
 
-        let package_name_clean = super::git::extract_package_name(&package.repo);
-        let folder_name = format!("{}-{}", package_name_clean, package.version);
-        let package_dir = spago_dir.join(&folder_name);
+        match package {
+            Package::Local(package) => Ok(None),
+            Package::Remote(package) => {
+                let folder_name = &package.name.0;
+                let package_dir = spago_dir.join(&folder_name);
 
-        // Check if already installed
-        if package_dir.exists() {
-            return Ok(None); // Already installed
+                // Check if already installed
+                if package_dir.exists() {
+                    return Ok(None); // Already installed
+                }
+
+                // Check global cache first
+                if global_cache.is_cached(&package.name, &package.version)? {
+                    // Copy from cache
+                    global_cache.copy_from_cache(&package.name, &package.version, &package_dir)?;
+                    return Ok(Some(InstalledPackage::Git(PackageInfo {
+                        name: package.name.clone(),
+                        version: package.version.clone(),
+                        repo_url: package.repo.clone(),
+                        local_path: package_dir,
+                    })));
+                }
+
+                // Fetch from Git and cache
+                let package_info = fetch_package(package, spago_dir)?;
+
+                // Cache the package for future use
+                global_cache.cache_package(
+                    &package_info.name,
+                    &package_info.version,
+                    &package_info.local_path,
+                )?;
+
+                Ok(Some(InstalledPackage::Git(package_info)))
+            }
         }
-
-        // Check global cache first
-        if global_cache.is_cached(&package_name_clean, &package.version)? {
-            // Copy from cache
-            global_cache.copy_from_cache(&package_name_clean, &package.version, &package_dir)?;
-            return Ok(Some(PackageInfo {
-                name: package_name_clean,
-                version: package.version.clone(),
-                repo_url: package.repo.clone(),
-                local_path: package_dir,
-            }));
-        }
-
-        // Fetch from Git and cache
-        let package_info = fetch_package(package, spago_dir)?;
-
-        // Cache the package for future use
-        global_cache.cache_package(
-            &package_info.name,
-            &package_info.version,
-            &package_info.local_path,
-        )?;
-
-        Ok(Some(package_info))
     }
 }

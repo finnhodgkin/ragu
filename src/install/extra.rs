@@ -3,33 +3,12 @@ use git2::Repository;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::{ExtraPackage, ExtraPackageConfig};
-use crate::install::git::extract_package_name;
-
-/// Handle installation of extra packages (overrides)
-pub fn install_extra_package(
-    package_name: &str,
-    extra_package: &ExtraPackage,
-    spago_dir: &Path,
-) -> Result<()> {
-    match extra_package {
-        ExtraPackage::Version(_version) => {
-            // Version overrides are not supported - use regular package set packages instead
-            anyhow::bail!(
-                "Version overrides are not supported. Use regular package set packages instead of extraPackages for {}@{}",
-                package_name,
-                _version
-            );
-        }
-        ExtraPackage::Config(config) => {
-            install_extra_package_config(package_name, config, spago_dir)
-        }
-    }
-}
+use crate::config::ExtraPackageConfig;
+use crate::registry::PackageName;
 
 /// Install an extra package with detailed configuration
-fn install_extra_package_config(
-    package_name: &str,
+pub fn install_extra_package(
+    package_name: &PackageName,
     config: &ExtraPackageConfig,
     spago_dir: &Path,
 ) -> Result<()> {
@@ -40,25 +19,24 @@ fn install_extra_package_config(
     } else {
         anyhow::bail!(
             "Extra package {} has no git URL or path specified",
-            package_name
+            package_name.0
         );
     }
 }
 
 /// Install an extra package from a Git repository
 fn install_git_extra_package(
-    package_name: &str,
+    package_name: &PackageName,
     git_url: &str,
     config: &ExtraPackageConfig,
     spago_dir: &Path,
 ) -> Result<()> {
-    let package_dir = spago_dir.join(package_name);
+    let package_dir = spago_dir.join(package_name.0.clone());
 
     // Git packages require a ref
-    let ref_name = config
-        .ref_
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Git package '{}' requires a 'ref' field", package_name))?;
+    let ref_name = config.ref_.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("Git package '{}' requires a 'ref' field", package_name.0)
+    })?;
 
     // Check if package is already installed
     if package_dir.exists() {
@@ -94,12 +72,12 @@ fn install_git_extra_package(
 
 /// Install an extra package from a local path
 fn install_local_extra_package(
-    package_name: &str,
+    package_name: &PackageName,
     local_path: &str,
     spago_dir: &Path,
 ) -> Result<()> {
     let source_path = PathBuf::from(local_path);
-    let dest_path = spago_dir.join(package_name);
+    let dest_path = spago_dir.join(package_name.0.clone());
 
     if !source_path.exists() {
         anyhow::bail!("Local path does not exist: {}", local_path);
@@ -122,22 +100,39 @@ fn install_local_extra_package(
 
     Ok(())
 }
-
-/// Recursively copy a directory
+/// Copy only the src directory and readme from a package
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     if !dst.exists() {
         fs::create_dir_all(dst)?;
     }
 
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
+    // Copy src directory if it exists
+    let src_dir = src.join("src");
+    if src_dir.exists() {
+        let dst_src = dst.join("src");
+        if !dst_src.exists() {
+            fs::create_dir_all(&dst_src)?;
+        }
 
-        if src_path.is_dir() {
-            copy_dir_all(&src_path, &dst_path)?;
-        } else {
-            fs::copy(&src_path, &dst_path)?;
+        for entry in fs::read_dir(&src_dir)? {
+            let entry = entry?;
+            let src_path = entry.path();
+            let dst_path = dst_src.join(entry.file_name());
+
+            if src_path.is_dir() {
+                copy_dir_all(&src_path, &dst_path)?;
+            } else {
+                fs::copy(&src_path, &dst_path)?;
+            }
+        }
+    }
+
+    // Copy readme if it exists
+    for readme_name in &["README.md", "README", "Readme.md", "readme.md"] {
+        let readme = src.join(readme_name);
+        if readme.exists() {
+            fs::copy(&readme, dst.join(readme_name))?;
+            break;
         }
     }
 

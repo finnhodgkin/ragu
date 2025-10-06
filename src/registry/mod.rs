@@ -10,4 +10,4 @@ pub use package_sets::{
     get_latest_tag, get_package_set, list_available_tags, list_available_tags_with_options,
 };
 pub use packages::{PackageQuery, PackageSetStats, ValidationResult};
-pub use types::{Package, PackageInfo, PackageSet};
+pub use types::{LocalPackage, Package, PackageName, PackageSet, PackageSetPackage};

@@ -13,7 +13,8 @@ use colored::Colorize;
 
 use crate::cli::{CacheAction, Cli, Command};
 use crate::registry::{
-    get_package_set, list_available_tags, list_available_tags_with_options, PackageQuery,
+    get_package_set, list_available_tags, list_available_tags_with_options, PackageName,
+    PackageQuery,
 };
 
 /// Execute the CLI command
@@ -65,18 +66,23 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         } => {
             let package_set = get_package_set(&tag, cli.force_refresh)?;
             let query = PackageQuery::new(&package_set);
-            info::execute(&query, &package, deps, transitive, reverse)
+            info::execute(
+                &query,
+                &PackageName::new(&package),
+                deps,
+                transitive,
+                reverse,
+            )
         }
         Command::Search { query, details } => {
             let package_set = get_package_set(&tag, cli.force_refresh)?;
             let pkg_query = PackageQuery::new(&package_set);
             search::execute(&pkg_query, &query, details)
         }
-        Command::Install { packages, no_deps } => {
+        Command::Install { packages } => {
             let package_set = get_package_set(&tag, cli.force_refresh)?;
             tokio::runtime::Runtime::new()?.block_on(install::execute(
                 &packages,
-                no_deps,
                 &package_set,
                 cli.verbose,
             ))
@@ -84,7 +90,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         Command::Uninstall { packages } => {
             let package_set = get_package_set(&tag, cli.force_refresh)?;
             tokio::runtime::Runtime::new()?.block_on(uninstall::execute(
-                &packages,
+                packages.iter().map(|p| PackageName::new(p)).collect(),
                 &package_set,
                 cli.verbose,
             ))

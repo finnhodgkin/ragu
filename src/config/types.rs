@@ -1,5 +1,8 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use crate::registry::{PackageName, PackageSet};
 
 /// Complete spago.yaml configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,9 +15,9 @@ pub struct SpagoConfig {
 /// Package configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageConfig {
-    pub name: String,
+    pub name: PackageName,
     #[serde(default)]
-    pub dependencies: Vec<String>,
+    pub dependencies: Vec<PackageName>,
     #[serde(default)]
     pub test: Option<TestConfig>,
 }
@@ -22,9 +25,9 @@ pub struct PackageConfig {
 /// Test configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestConfig {
-    pub main: String,
+    pub main: PackageName,
     #[serde(default)]
-    pub dependencies: Vec<String>,
+    pub dependencies: Vec<PackageName>,
 }
 
 /// Workspace configuration
@@ -34,17 +37,7 @@ pub struct WorkspaceConfig {
     #[serde(default)]
     pub package_set: Option<PackageSetConfig>,
     #[serde(default)]
-    pub extra_packages: HashMap<String, ExtraPackage>,
-}
-
-/// Extra package configuration - can be a version string or a detailed config
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum ExtraPackage {
-    /// Simple version string (e.g., "4.0.0")
-    Version(String),
-    /// Detailed package configuration
-    Config(ExtraPackageConfig),
+    pub extra_packages: HashMap<PackageName, ExtraPackageConfig>,
 }
 
 /// Detailed extra package configuration
@@ -72,17 +65,10 @@ pub struct PackageSetConfig {
 
 impl SpagoConfig {
     /// Get all dependencies (package + test)
-    pub fn all_dependencies(&self) -> Vec<&str> {
-        let mut deps: Vec<&str> = self
-            .package
-            .dependencies
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
+    pub fn all_dependencies(&self) -> Vec<&PackageName> {
+        let mut deps = self.package_dependencies();
 
-        if let Some(test) = &self.package.test {
-            deps.extend(test.dependencies.iter().map(|s| s.as_str()));
-        }
+        deps.extend(self.test_dependencies());
 
         // Remove duplicates
         deps.sort_unstable();
@@ -91,20 +77,16 @@ impl SpagoConfig {
     }
 
     /// Get only package dependencies (excluding test)
-    pub fn package_dependencies(&self) -> Vec<&str> {
-        self.package
-            .dependencies
-            .iter()
-            .map(|s| s.as_str())
-            .collect()
+    pub fn package_dependencies(&self) -> Vec<&PackageName> {
+        self.package.dependencies.iter().collect()
     }
 
     /// Get only test dependencies
-    pub fn test_dependencies(&self) -> Vec<&str> {
+    pub fn test_dependencies(&self) -> Vec<&PackageName> {
         self.package
             .test
             .as_ref()
-            .map(|t| t.dependencies.iter().map(|s| s.as_str()).collect())
+            .map(|t| t.dependencies.iter().collect())
             .unwrap_or_default()
     }
 
@@ -115,6 +97,16 @@ impl SpagoConfig {
             .as_ref()
             .map(|ps| ps.url.as_str())
     }
+
+    pub fn package_set(&self) -> Result<PackageSet> {
+        let package_set_url = self
+            .package_set_url()
+            .context("Package set URL not found in spago.yaml")?;
+        let package_set_tag = crate::config::extract_tag_from_url(package_set_url)
+            .context("Failed to extract tag from package set URL")?;
+
+        crate::registry::get_package_set(&package_set_tag, false)
+    }
 }
 
 #[cfg(test)]
@@ -124,11 +116,11 @@ mod tests {
     fn create_test_config() -> SpagoConfig {
         SpagoConfig {
             package: PackageConfig {
-                name: "test-package".to_string(),
-                dependencies: vec!["prelude".to_string(), "effect".to_string()],
+                name: PackageName::new("test-package"),
+                dependencies: vec![PackageName::new("prelude"), PackageName::new("effect")],
                 test: Some(TestConfig {
-                    main: "Test.Main".to_string(),
-                    dependencies: vec!["console".to_string(), "effect".to_string()],
+                    main: PackageName::new("Test.Main"),
+                    dependencies: vec![PackageName::new("console"), PackageName::new("effect")],
                 }),
             },
             workspace: WorkspaceConfig::default(),
@@ -142,9 +134,9 @@ mod tests {
 
         // Should have console, effect, prelude (effect appears in both but deduplicated)
         assert_eq!(deps.len(), 3);
-        assert!(deps.contains(&"prelude"));
-        assert!(deps.contains(&"effect"));
-        assert!(deps.contains(&"console"));
+        assert!(deps.contains(&&PackageName::new("prelude")));
+        assert!(deps.contains(&&PackageName::new("effect")));
+        assert!(deps.contains(&&PackageName::new("console")));
     }
 
     #[test]
@@ -153,8 +145,8 @@ mod tests {
         let deps = config.package_dependencies();
 
         assert_eq!(deps.len(), 2);
-        assert!(deps.contains(&"prelude"));
-        assert!(deps.contains(&"effect"));
+        assert!(deps.contains(&&PackageName::new("prelude")));
+        assert!(deps.contains(&&PackageName::new("effect")));
     }
 
     #[test]
@@ -163,7 +155,7 @@ mod tests {
         let deps = config.test_dependencies();
 
         assert_eq!(deps.len(), 2);
-        assert!(deps.contains(&"console"));
-        assert!(deps.contains(&"effect"));
+        assert!(deps.contains(&&PackageName::new("console")));
+        assert!(deps.contains(&&PackageName::new("effect")));
     }
 }

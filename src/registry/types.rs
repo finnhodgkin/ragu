@@ -1,46 +1,101 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
-/// Represents a package in the package set
+/// The complete package set - a map of package names to package information
+pub type PackageSet = HashMap<PackageName, Package>;
+
+/// A package name, shared between all package types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[serde(transparent)]
+pub struct PackageName(pub String);
+
+impl PackageName {
+    pub fn new(name: &str) -> Self {
+        Self(name.to_string())
+    }
+}
+
+/// A remote package from your package set
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Package {
-    pub dependencies: Vec<String>,
+pub struct PackageInSet {
+    pub dependencies: Vec<PackageName>,
     pub repo: String,
     pub version: String,
 }
 
+/// A remote package from your package set
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PackageSetPackage {
+    pub name: PackageName,
+    pub dependencies: Vec<PackageName>,
+    pub repo: String,
+    pub version: String,
+}
+
+/// A local dependency in your filesystem
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LocalPackage {
+    pub name: PackageName,
+    pub dependencies: Vec<PackageName>,
+    pub path: PathBuf,
+}
+
+/// A package in the package set
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Package {
+    /// A remote package set package
+    Remote(PackageSetPackage),
+    /// A local filesystem package
+    Local(LocalPackage),
+}
+
 impl Package {
-    /// Get the package name from its repository URL
-    pub fn name_from_repo(&self) -> Option<String> {
-        self.repo.split('/').last().map(|s| s.to_string())
+    pub fn new(package: PackageSetPackage) -> Self {
+        Package::Remote(package)
     }
-}
 
-/// The complete package set - a map of package names to package information
-pub type PackageSet = HashMap<String, Package>;
-
-/// Information about a package with its dependencies resolved
-#[derive(Debug, Clone)]
-pub struct PackageInfo<'a> {
-    pub name: String,
-    pub package: &'a Package,
-}
-
-impl<'a> PackageInfo<'a> {
-    pub fn new(name: impl Into<String>, package: &'a Package) -> Self {
-        Self {
-            name: name.into(),
-            package,
-        }
+    pub fn new_local(
+        name: PackageName,
+        path: PathBuf,
+        dependencies: Option<Vec<PackageName>>,
+    ) -> Self {
+        Package::Local(LocalPackage {
+            name,
+            path,
+            dependencies: dependencies.unwrap_or_default(),
+        })
     }
 
     /// Get the number of direct dependencies
     pub fn dep_count(&self) -> usize {
-        self.package.dependencies.len()
+        self.dependencies().len()
     }
 
     /// Check if this package depends on another package
-    pub fn depends_on(&self, pkg_name: &str) -> bool {
-        self.package.dependencies.iter().any(|d| d == pkg_name)
+    pub fn depends_on(&self, pkg_name: &PackageName) -> bool {
+        self.dependencies().iter().any(|d| d == pkg_name)
+    }
+
+    /// Get the package name from its repository URL
+    pub fn name(&self) -> &PackageName {
+        match self {
+            Package::Remote(package) => &package.name,
+            Package::Local(package) => &package.name,
+        }
+    }
+
+    pub fn version(&self) -> Option<&String> {
+        match self {
+            Package::Remote(package) => Some(&package.version),
+            Package::Local(_) => None,
+        }
+    }
+
+    /// Get the full list of dependencies
+    pub fn dependencies(&self) -> &Vec<PackageName> {
+        match self {
+            Package::Remote(package) => &package.dependencies,
+            Package::Local(package) => &package.dependencies,
+        }
     }
 }

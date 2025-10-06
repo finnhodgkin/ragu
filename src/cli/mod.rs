@@ -5,6 +5,8 @@ use clap::{Parser, Subcommand};
 
 pub use commands::execute_command;
 
+use crate::registry::PackageName;
+
 /// Spago Rust - A blazingly fast PureScript package manager
 #[derive(Parser, Debug)]
 #[command(name = "spago")]
@@ -70,10 +72,6 @@ pub enum Command {
     Install {
         /// Packages to install
         packages: Vec<String>,
-
-        /// Skip dependency resolution
-        #[arg(long)]
-        no_deps: bool,
     },
 
     /// Uninstall packages

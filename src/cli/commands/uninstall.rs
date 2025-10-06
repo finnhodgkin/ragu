@@ -2,12 +2,16 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::path::PathBuf;
 
-use crate::config::{load_config, remove_packages_from_config, SpagoConfig};
+use crate::config::{load_config, remove_packages_from_config};
 use crate::install::cleanup_unused_packages;
-use crate::registry::{PackageQuery, PackageSet};
+use crate::registry::{PackageName, PackageSet};
 
 /// Execute the uninstall command
-pub async fn execute(packages: &[String], package_set: &PackageSet, verbose: bool) -> Result<()> {
+pub async fn execute(
+    packages: Vec<PackageName>,
+    package_set: &PackageSet,
+    verbose: bool,
+) -> Result<()> {
     if packages.is_empty() {
         anyhow::bail!("No packages specified to uninstall");
     }
@@ -15,7 +19,14 @@ pub async fn execute(packages: &[String], package_set: &PackageSet, verbose: boo
     let spago_dir = PathBuf::from(".spago");
 
     if verbose {
-        println!("Uninstalling packages: {}", packages.join(", "));
+        println!(
+            "Uninstalling packages: {}",
+            packages
+                .iter()
+                .map(|p| p.0.clone())
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
     }
 
     // Load current configuration
@@ -23,14 +34,17 @@ pub async fn execute(packages: &[String], package_set: &PackageSet, verbose: boo
         load_config("spago.yaml").context("Failed to load spago.yaml. Run 'spago init' first.")?;
 
     // Validate that packages are actually installed
-    for package_name in packages {
+    for package_name in &packages {
         if !config.package.dependencies.contains(package_name) {
-            anyhow::bail!("Package '{}' is not installed in spago.yaml", package_name);
+            anyhow::bail!(
+                "Package '{}' is not installed in spago.yaml",
+                package_name.0
+            );
         }
     }
 
     // Remove packages from spago.yaml
-    remove_packages_from_config(&PathBuf::from("spago.yaml"), packages)
+    remove_packages_from_config(&PathBuf::from("spago.yaml"), &packages)
         .context("Failed to update spago.yaml")?;
 
     if verbose {
@@ -43,7 +57,7 @@ pub async fn execute(packages: &[String], package_set: &PackageSet, verbose: boo
         updated_config
             .package
             .dependencies
-            .retain(|dep| dep != package_name);
+            .retain(|dep| dep != &package_name);
     }
 
     // Clean up unused packages from .spago directory

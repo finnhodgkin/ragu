@@ -20,16 +20,24 @@ pub fn execute(query: &PackageQuery, search_query: &str, show_details: bool) -> 
 
     for result in results.iter().take(50) {
         if show_details {
-            println!("  {} {}", "→".green(), result.name.bright_white().bold());
-            println!("    {} {}", "Version:".dimmed(), result.package.version);
+            println!(
+                "  {} {}",
+                "→".green(),
+                result.name().0.bright_white().bold()
+            );
+            println!(
+                "    {} {}",
+                "Version:".dimmed(),
+                result.version().unwrap_or(&"Local".to_string())
+            );
             println!("    {} {}", "Dependencies:".dimmed(), result.dep_count());
             println!();
         } else {
             println!(
                 "  {} {} {} ({} deps)",
                 "→".green(),
-                result.name,
-                result.package.version.dimmed(),
+                result.name().0,
+                result.version().unwrap_or(&"Local".to_string()).dimmed(),
                 result.dep_count()
             );
         }
@@ -47,4 +55,3 @@ pub fn execute(query: &PackageQuery, search_query: &str, show_details: bool) -> 
     println!();
     Ok(())
 }
-
