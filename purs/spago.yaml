@@ -12,6 +12,10 @@ workspace:
   packageSet:
     url: https://raw.githubusercontent.com/purescript/package-sets/psc-0.15.15-20251004/packages.json
   extraPackages:
+    tester:
+      path: ../local-package-test
+      dependencies:
+        - aff
     graphql-client:
       dependencies:
         - aff

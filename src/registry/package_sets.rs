@@ -85,6 +85,7 @@ pub fn get_package_set(tag: &str, force_refresh: bool) -> Result<PackageSet> {
 
     // Add extra packages. These won't be saved to cache because they are not part of the package set.
     add_extra_packages(&mut package_set, &extra_packages);
+    // Add local workspace packages.
     add_workspace_packages(&mut package_set, &config.workspace_root);
 
     Ok(package_set)

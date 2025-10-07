@@ -257,11 +257,11 @@ fn generate_dependency_glob(
             ));
         }
     } else if verbose {
-        println!("  {} -> Package not found in .spago", package_name.0);
+        println!("  {} -> Package not found", package_name.0);
     }
 
     Err(anyhow::anyhow!(
-        "Package {} not found in .spago. Couldn't generate a glob for it.",
+        "Package {} not found. Couldn't generate a glob for it.",
         package_name.0
     ))
 }
