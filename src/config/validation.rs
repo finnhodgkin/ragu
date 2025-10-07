@@ -172,6 +172,7 @@ mod tests {
     use crate::config::PackageConfig;
     use crate::registry::{Package, PackageSet, PackageSetPackage};
     use std::collections::HashMap;
+    use std::path::PathBuf;
 
     fn create_test_package_set() -> PackageSet {
         let mut set = HashMap::new();
@@ -208,6 +209,7 @@ mod tests {
                 test: None,
             },
             workspace: Default::default(),
+            workspace_root: PathBuf::from("."),
         };
 
         let package_set = create_test_package_set();
@@ -227,6 +229,7 @@ mod tests {
                 test: None,
             },
             workspace: Default::default(),
+            workspace_root: PathBuf::from("."),
         };
 
         let package_set = create_test_package_set();

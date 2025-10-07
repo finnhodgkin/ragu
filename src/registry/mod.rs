@@ -3,6 +3,7 @@ mod cache;
 mod package_sets;
 mod packages;
 mod types;
+mod workspace_packages;
 
 // Re-export public API
 pub use cache::{clear_cache, clear_cache_for_tag, clear_tags_cache, get_cache_dir};
@@ -11,3 +12,4 @@ pub use package_sets::{
 };
 pub use packages::{PackageQuery, PackageSetStats, ValidationResult};
 pub use types::{LocalPackage, Package, PackageName, PackageSet, PackageSetPackage};
+pub use workspace_packages::add_workspace_packages;

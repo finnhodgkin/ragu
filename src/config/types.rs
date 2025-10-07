@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::registry::{PackageName, PackageSet};
 
@@ -8,8 +8,8 @@ use crate::registry::{PackageName, PackageSet};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpagoConfig {
     pub package: PackageConfig,
-    #[serde(default)]
     pub workspace: WorkspaceConfig,
+    pub workspace_root: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +137,7 @@ mod tests {
                 }),
             },
             workspace: WorkspaceConfig::default(),
+            workspace_root: PathBuf::from("."),
         }
     }
 

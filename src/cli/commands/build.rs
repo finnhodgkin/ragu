@@ -368,6 +368,7 @@ mod tests {
                 test: None,
             },
             workspace: crate::config::WorkspaceConfig::default(),
+            workspace_root: temp_dir.path().to_path_buf(),
         };
 
         // Change to temp directory for the test

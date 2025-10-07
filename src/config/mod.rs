@@ -2,15 +2,13 @@ mod types;
 mod update;
 mod validation;
 
-pub use types::{ExtraPackageConfig, PackageConfig, SpagoConfig, TestConfig, WorkspaceConfig};
+pub use types::{ExtraPackageConfig, PackageConfig, SpagoConfig, WorkspaceConfig};
 pub use update::{add_packages_to_config, remove_packages_from_config};
-pub use validation::{
-    validate_config, validate_transitive_deps, ValidationError, ValidationResult,
-};
+pub use validation::{validate_config, validate_transitive_deps};
 
 use anyhow::{Context, Result};
-use std::fs;
 use std::path::Path;
+use std::{fs, path::PathBuf};
 
 use crate::config::types::{JustPackageConfig, JustWorkspaceConfig};
 
@@ -29,17 +27,20 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<SpagoConfig> {
             .context("Failed to parse workspace section of spago.yaml")?
             .workspace;
 
+    let cwd = path.parent().context("Failed to get current directory")?;
     Ok(match workspace_config {
         Some(workspace_config) => SpagoConfig {
             package: package_config,
             workspace: workspace_config,
+            workspace_root: cwd.to_path_buf(),
         },
         None => {
-            let cwd = path.parent().context("Failed to get current directory")?;
             let above = cwd.join("..");
+            let (workspace_root, workspace) = find_workspace_root(&above)?;
             SpagoConfig {
-                workspace: traverse_up_to_workspace_config(&above)?,
+                workspace,
                 package: package_config,
+                workspace_root,
             }
         }
     })
@@ -52,7 +53,7 @@ pub fn load_config_cwd() -> Result<SpagoConfig> {
     Ok(config)
 }
 
-fn traverse_up_to_workspace_config(parent: &Path) -> Result<WorkspaceConfig> {
+fn find_workspace_root(parent: &Path) -> Result<(PathBuf, WorkspaceConfig)> {
     fs::exists(parent).context("Failed to find workspace config by traversing up.")?;
 
     let spago_yaml = parent.join("spago.yaml");
@@ -63,11 +64,11 @@ fn traverse_up_to_workspace_config(parent: &Path) -> Result<WorkspaceConfig> {
                 .context("Failed to parse spago.yaml")?
                 .workspace;
         match workspace_config {
-            Some(workspace_config) => Ok(workspace_config),
-            None => traverse_up_to_workspace_config(&parent.join("..")),
+            Some(workspace_config) => Ok((parent.to_path_buf(), workspace_config)),
+            None => find_workspace_root(&parent.join("..")),
         }
     } else {
-        traverse_up_to_workspace_config(&parent.join(".."))
+        find_workspace_root(&parent.join(".."))
     }
 }
 
