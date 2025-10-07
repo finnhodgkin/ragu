@@ -23,6 +23,8 @@ pub struct GlobalPackageCache {
     index_path: PathBuf,
 }
 
+const CACHE_KEY: &str = "spago-rust-0.0.1";
+
 type Index = HashMap<PackageName, CachedPackage>;
 
 impl GlobalPackageCache {
@@ -88,7 +90,7 @@ impl GlobalPackageCache {
         version: &str,
         source_path: &Path,
     ) -> Result<PathBuf> {
-        let cached_name = format!("{}-{}", name.0, version);
+        let cached_name = format!("{}-{}-{}", name.0, version, CACHE_KEY);
         let cached_path = self.cache_dir.join(&cached_name);
 
         // Copy the package to cache

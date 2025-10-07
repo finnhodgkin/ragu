@@ -37,7 +37,7 @@ async fn install_all_from_config(spago_dir: &PathBuf, verbose: bool) -> Result<(
     // Load package set
     let package_set = config.package_set()?;
 
-    // Install all dependencies with extra packages support
+    // Install all dependencies
     let result = install_all_dependencies(&config, &package_set, spago_dir).await?;
 
     // Clean up unused packages
@@ -102,24 +102,14 @@ async fn install_specific_packages(
     spago_dir: &PathBuf,
     verbose: bool,
 ) -> Result<()> {
-    // Load config for extra packages
-    let config = load_config("spago.yaml").ok();
-
-    // Validate packages exist in package set or are available as extra packages
+    // Validate packages exist in package set
     let query = PackageQuery::new(package_set);
     for package_name in packages {
         let package = PackageName::new(package_name);
         let is_in_package_set = query.exists(&package);
-        let is_available_extra_package = config
-            .as_ref()
-            .map(|c| c.workspace.extra_packages.contains_key(&package))
-            .unwrap_or(false);
 
-        if !is_in_package_set && !is_available_extra_package {
-            anyhow::bail!(
-                "Package '{}' not found in package set or extra packages",
-                package_name
-            );
+        if !is_in_package_set {
+            anyhow::bail!("Package '{}' not found in package set", package_name);
         }
     }
 

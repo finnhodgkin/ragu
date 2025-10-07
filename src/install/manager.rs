@@ -128,6 +128,13 @@ impl InstallManager {
             }
         }
 
+        if !errors.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Failed to install dependencies: {}",
+                errors.join(", ")
+            ));
+        }
+
         Ok(InstallResult { installed, errors })
     }
 

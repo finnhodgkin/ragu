@@ -17,7 +17,7 @@ pub struct PackageInfo {
 /// Fetch a package from its Git repository
 pub fn fetch_package(package: &PackageSetPackage, spago_dir: &Path) -> Result<PackageInfo> {
     let package_name = package.name.clone();
-    let folder_name = format!("{}-{}", package_name.0, package.version);
+    let folder_name = package.name.0.clone();
     let package_dir = spago_dir.join(&folder_name);
 
     // Check if package is already installed with the correct version

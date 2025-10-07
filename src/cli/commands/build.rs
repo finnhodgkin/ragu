@@ -6,7 +6,7 @@ use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use crate::config::SpagoConfig;
-use crate::install::InstallManager;
+use crate::install::{install_all_dependencies, InstallManager};
 use crate::registry::{PackageName, PackageQuery, PackageSet};
 
 /// Build command result containing source globs for each dependency
@@ -39,17 +39,13 @@ pub async fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
     }
     let spago_dir = PathBuf::from(".spago");
 
-    let installer = InstallManager::new(&spago_dir)?;
-
     // Load spago.yaml configuration
     let config =
         crate::config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
     let package_set = config.package_set()?;
 
-    installer
-        .install_packages(&config.package_set()?, &config)
-        .await?;
+    install_all_dependencies(&config, &package_set, &spago_dir).await?;
 
     // Generate source globs for dependencies
     let sources = generate_sources(&config, Some(package_set), verbose)?;
@@ -83,7 +79,6 @@ pub async fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
     if verbose {
         println!("{} Running purs compiler...", "→".cyan());
     }
-
     // Run the compiler with streaming output
     let mut child = command
         .stdout(std::process::Stdio::piped())
@@ -91,24 +86,39 @@ pub async fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
         .spawn()
         .context("Failed to start purs compiler")?;
 
-    // Stream stdout
-    if let Some(stdout) = child.stdout.take() {
+    // Stream stdout and stderr concurrently using threads
+    let stdout_thread = if let Some(stdout) = child.stdout.take() {
         let stdout_reader = std::io::BufReader::new(stdout);
-        for line in stdout_reader.lines() {
-            if let Ok(line) = line {
-                println!("{}", line);
+        Some(std::thread::spawn(move || {
+            for line in stdout_reader.lines() {
+                if let Ok(line) = line {
+                    println!("{}", line);
+                }
             }
-        }
-    }
+        }))
+    } else {
+        None
+    };
 
-    // Stream stderr
-    if let Some(stderr) = child.stderr.take() {
+    let stderr_thread = if let Some(stderr) = child.stderr.take() {
         let stderr_reader = std::io::BufReader::new(stderr);
-        for line in stderr_reader.lines() {
-            if let Ok(line) = line {
-                eprintln!("{}", line);
+        Some(std::thread::spawn(move || {
+            for line in stderr_reader.lines() {
+                if let Ok(line) = line {
+                    eprintln!("{}", line);
+                }
             }
-        }
+        }))
+    } else {
+        None
+    };
+
+    // Wait for output threads to finish
+    if let Some(stdout_thread) = stdout_thread {
+        stdout_thread.join().unwrap();
+    }
+    if let Some(stderr_thread) = stderr_thread {
+        stderr_thread.join().unwrap();
     }
 
     // Wait for completion
@@ -251,7 +261,10 @@ fn generate_dependency_glob(
         println!("  {} -> Package not found in .spago", package_name.0);
     }
 
-    Ok(None)
+    Err(anyhow::anyhow!(
+        "Package {} not found in .spago. Couldn't generate a glob for it.",
+        package_name.0
+    ))
 }
 
 /// Find the installed package directory in .spago
@@ -272,7 +285,10 @@ fn find_package_directory(package_name: &PackageName, spago_dir: &Path) -> Resul
         }
     }
 
-    Err(anyhow::anyhow!("Package not found in .spago"))
+    Err(anyhow::anyhow!(
+        "Package {} not found in .spago",
+        package_name.0
+    ))
 }
 
 #[cfg(test)]
