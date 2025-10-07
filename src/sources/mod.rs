@@ -119,8 +119,11 @@ pub fn generate_sources(
     })
 }
 
+#[cfg(test)]
+mod tests;
+
 /// Generate a glob pattern for a specific dependency
-fn generate_dependency_glob(
+pub fn generate_dependency_glob(
     package_name: &PackageName,
     spago_dir: &Path,
     package_set: &PackageSet,
@@ -161,7 +164,7 @@ fn generate_dependency_glob(
 }
 
 /// Find the installed package directory in .spago
-fn find_package_directory(
+pub fn find_package_directory(
     package_name: &PackageName,
     spago_dir: &Path,
     package_set: &PackageSet,
