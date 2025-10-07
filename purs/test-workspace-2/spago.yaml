@@ -1,0 +1,7 @@
+package:
+  name: nested-2
+  dependencies:
+    - nested
+  test:
+    main: Test.Main
+    dependencies: []

@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::config::{add_packages_to_config, load_config, SpagoConfig};
-use crate::install::{cleanup_unused_packages, install_all_dependencies, InstallResult};
+use crate::config::{add_packages_to_config, load_config};
+use crate::install::{cleanup_unused_packages, install_all_dependencies};
 use crate::registry::{PackageName, PackageQuery, PackageSet};
 
 /// Execute the install command

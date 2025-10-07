@@ -1,13 +1,10 @@
 mod commands;
 
-use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 pub use commands::execute_command;
 
-use crate::registry::PackageName;
-
-/// Spago Rust - A blazingly fast PureScript package manager
+/// Spago Rust - A rust port of the popular PureScript package manager
 #[derive(Parser, Debug)]
 #[command(name = "spago")]
 #[command(version, about, long_about = None)]

@@ -12,6 +12,17 @@ pub struct SpagoConfig {
     pub workspace: WorkspaceConfig,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JustPackageConfig {
+    pub package: PackageConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JustWorkspaceConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<WorkspaceConfig>,
+}
+
 /// Package configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageConfig {
@@ -34,6 +45,8 @@ pub struct TestConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceConfig {
+    #[serde(default)]
+    pub is_nested: bool,
     #[serde(default)]
     pub package_set: Option<PackageSetConfig>,
     #[serde(default)]
