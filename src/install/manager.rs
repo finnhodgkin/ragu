@@ -78,10 +78,16 @@ impl InstallManager {
         let mut all_packages = HashSet::new();
         let mut processed = HashSet::new();
 
+        let direct_package_dependencies: Vec<PackageName> = if config.is_workspace_root() {
+            query.all_workspace_dependencies()
+        } else {
+            config.package_dependencies().into_iter().cloned().collect()
+        };
+
         // Collect all packages to install (including dependencies)
-        for package_name in config.package_dependencies() {
+        for package_name in direct_package_dependencies {
             self.collect_dependencies_recursive(
-                package_name,
+                &package_name,
                 &query,
                 &mut all_packages,
                 &mut processed,

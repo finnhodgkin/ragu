@@ -56,6 +56,23 @@ impl<'a> PackageQuery<'a> {
         result
     }
 
+    pub fn all_workspace_dependencies(&self) -> Vec<PackageName> {
+        let mut local: Vec<PackageName> = self
+            .local_packages()
+            .iter()
+            .flat_map(|p| {
+                let mut deps = p.dependencies.clone();
+                deps.push(p.name.clone());
+                deps
+            })
+            .collect();
+
+        local.sort_unstable();
+        local.dedup();
+
+        local
+    }
+
     /// Get all direct dependencies of a package
     pub fn get_dependencies(&self, name: &PackageName) -> Result<Vec<&Package>> {
         let deps = self

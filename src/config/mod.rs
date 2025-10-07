@@ -32,7 +32,11 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<SpagoConfig> {
         Some(workspace_config) => SpagoConfig {
             package: package_config,
             workspace: workspace_config,
-            workspace_root: cwd.to_path_buf(),
+            workspace_root: if cwd.to_path_buf() == PathBuf::from("") {
+                PathBuf::from(".")
+            } else {
+                cwd.to_path_buf()
+            },
         },
         None => {
             let above = cwd.join("..");

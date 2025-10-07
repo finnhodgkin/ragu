@@ -24,10 +24,19 @@ pub fn cleanup_unused_packages(
 
     let manager = InstallManager::new(&spago_dir)?;
 
+    let mut dependencies_to_keep: Vec<PackageName> =
+        config.package_dependencies().into_iter().cloned().collect();
+
+    let all_local_deps: Vec<PackageName> = query.all_workspace_dependencies();
+
+    dependencies_to_keep.extend(all_local_deps);
+    dependencies_to_keep.sort_unstable();
+    dependencies_to_keep.dedup();
+
     // Collect all dependencies from spago.yaml
-    for dep in config.all_dependencies() {
+    for dep in dependencies_to_keep {
         manager.collect_dependencies_recursive(
-            dep,
+            &dep,
             &query,
             &mut required_packages,
             &mut processed,

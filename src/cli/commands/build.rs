@@ -173,17 +173,6 @@ pub fn generate_sources(
         ));
     }
 
-    // Get package dependencies (excluding test dependencies for now)
-    let package_deps = config.package_dependencies();
-
-    if verbose {
-        println!(
-            "{} Found {} direct package dependencies",
-            "→".cyan(),
-            package_deps.len()
-        );
-    }
-
     let package_set = match package_set {
         None => config.package_set()?,
         Some(package_set) => package_set,
@@ -195,7 +184,13 @@ pub fn generate_sources(
     let manager = InstallManager::new(spago_dir)?;
     let query = PackageQuery::new(&package_set);
 
-    for dep_name in package_deps {
+    let direct_package_dependencies: Vec<PackageName> = if config.is_workspace_root() {
+        query.all_workspace_dependencies()
+    } else {
+        config.package_dependencies().into_iter().cloned().collect()
+    };
+
+    for dep_name in direct_package_dependencies {
         manager.collect_dependencies_recursive(
             &dep_name,
             &query,
@@ -204,11 +199,15 @@ pub fn generate_sources(
         )?;
     }
 
+    let main_sources = "./src/**/*.purs".to_string();
+
     let mut dependency_globs = Vec::new();
     // Generate globs for each dependency (including transitive ones)
     for dep_name in all_dependencies {
         if let Some(glob) = generate_dependency_glob(&dep_name, spago_dir, &package_set, verbose)? {
-            dependency_globs.push(glob);
+            if glob.glob_pattern != main_sources {
+                dependency_globs.push(glob);
+            }
         }
     }
 
@@ -219,9 +218,6 @@ pub fn generate_sources(
             dependency_globs.len()
         );
     }
-
-    // Main sources glob (src/**/*.purs)
-    let main_sources = "src/**/*.purs".to_string();
 
     Ok(BuildSources {
         dependency_globs,
