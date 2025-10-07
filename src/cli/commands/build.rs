@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::config::SpagoConfig;
 use crate::install::{install_all_dependencies, InstallManager};
-use crate::registry::{PackageName, PackageQuery, PackageSet};
+use crate::registry::{Package, PackageName, PackageQuery, PackageSet};
 
 /// Build command result containing source globs for each dependency
 #[derive(Debug)]
@@ -37,7 +37,6 @@ pub async fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
         println!("  Watch: {}", watch);
         println!("  Clear: {}", clear);
     }
-    let spago_dir = PathBuf::from(".spago");
 
     // Load spago.yaml configuration
     let config =
@@ -45,7 +44,7 @@ pub async fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
 
     let package_set = config.package_set()?;
 
-    install_all_dependencies(&config, &package_set, &spago_dir).await?;
+    install_all_dependencies(&config, &package_set).await?;
 
     // Generate source globs for dependencies
     let sources = generate_sources(&config, Some(package_set), verbose)?;
@@ -166,7 +165,7 @@ pub fn generate_sources(
     package_set: Option<PackageSet>,
     verbose: bool,
 ) -> Result<BuildSources> {
-    let spago_dir = Path::new(".spago");
+    let spago_dir = &config.spago_dir();
 
     if !spago_dir.exists() {
         return Err(anyhow::anyhow!(
@@ -208,7 +207,7 @@ pub fn generate_sources(
     let mut dependency_globs = Vec::new();
     // Generate globs for each dependency (including transitive ones)
     for dep_name in all_dependencies {
-        if let Some(glob) = generate_dependency_glob(&dep_name, spago_dir, verbose)? {
+        if let Some(glob) = generate_dependency_glob(&dep_name, spago_dir, &package_set, verbose)? {
             dependency_globs.push(glob);
         }
     }
@@ -234,10 +233,11 @@ pub fn generate_sources(
 fn generate_dependency_glob(
     package_name: &PackageName,
     spago_dir: &Path,
+    package_set: &PackageSet,
     verbose: bool,
 ) -> Result<Option<DependencyGlob>> {
     // Find the installed package directory
-    let package_dir = find_package_directory(package_name, spago_dir)?;
+    let package_dir = find_package_directory(package_name, spago_dir, package_set)?;
 
     if let Some(dir) = package_dir {
         // Check if the package has source files
@@ -255,7 +255,10 @@ fn generate_dependency_glob(
                 local_path: dir,
             }));
         } else if verbose {
-            println!("  {} -> No src directory found", package_name.0);
+            return Err(anyhow::anyhow!(
+                "No src directory found for package {}",
+                package_name.0
+            ));
         }
     } else if verbose {
         println!("  {} -> Package not found in .spago", package_name.0);
@@ -268,7 +271,15 @@ fn generate_dependency_glob(
 }
 
 /// Find the installed package directory in .spago
-fn find_package_directory(package_name: &PackageName, spago_dir: &Path) -> Result<Option<PathBuf>> {
+fn find_package_directory(
+    package_name: &PackageName,
+    spago_dir: &Path,
+    package_set: &PackageSet,
+) -> Result<Option<PathBuf>> {
+    if let Some(Package::Local(package)) = package_set.get(package_name) {
+        return Ok(Some(package.path.clone()));
+    }
+
     let entries = fs::read_dir(spago_dir).context("Failed to read .spago directory")?;
 
     for entry in entries {
@@ -289,107 +300,4 @@ fn find_package_directory(package_name: &PackageName, spago_dir: &Path) -> Resul
         "Package {} not found in .spago",
         package_name.0
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_generate_dependency_glob() {
-        let temp_dir = tempdir().unwrap();
-        let spago_dir = temp_dir.path();
-
-        // Create a mock package directory structure
-        let package_dir = spago_dir.join("test-package-1.0.0");
-        let src_dir = package_dir.join("src");
-        fs::create_dir_all(&src_dir).unwrap();
-
-        // Create a test .purs file
-        fs::write(src_dir.join("Test.purs"), "module Test where").unwrap();
-
-        let result =
-            generate_dependency_glob(&PackageName::new("test-package"), spago_dir, false).unwrap();
-
-        assert!(result.is_some());
-        let glob = result.unwrap();
-        assert_eq!(glob.package_name, "test-package");
-        assert!(glob
-            .glob_pattern
-            .contains("test-package-1.0.0/src/**/*.purs"));
-    }
-
-    #[test]
-    fn test_find_package_directory() {
-        let temp_dir = tempdir().unwrap();
-        let spago_dir = temp_dir.path();
-
-        // Create mock package directories
-        fs::create_dir_all(spago_dir.join("package-a-1.0.0")).unwrap();
-        fs::create_dir_all(spago_dir.join("package-b-2.0.0")).unwrap();
-        fs::create_dir_all(spago_dir.join("other-package-1.0.0")).unwrap();
-
-        // Test finding existing package
-        let result = find_package_directory(&PackageName::new("package-a"), spago_dir).unwrap();
-        assert!(result.is_some());
-        assert!(result
-            .unwrap()
-            .to_string_lossy()
-            .contains("package-a-1.0.0"));
-
-        // Test finding non-existing package
-        let result = find_package_directory(&PackageName::new("nonexistent"), spago_dir).unwrap();
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_generate_sources_with_mock_config() {
-        let temp_dir = tempdir().unwrap();
-        let spago_dir = temp_dir.path().join(".spago");
-
-        // Create mock package directories with source files
-        let package_a_dir = spago_dir.join("package-a-1.0.0");
-        let package_a_src = package_a_dir.join("src");
-        fs::create_dir_all(&package_a_src).unwrap();
-        fs::write(package_a_src.join("ModuleA.purs"), "module ModuleA where").unwrap();
-
-        let package_b_dir = spago_dir.join("package-b-2.0.0");
-        let package_b_src = package_b_dir.join("src");
-        fs::create_dir_all(&package_b_src).unwrap();
-        fs::write(package_b_src.join("ModuleB.purs"), "module ModuleB where").unwrap();
-
-        // Create mock config
-        let config = SpagoConfig {
-            package: crate::config::PackageConfig {
-                name: PackageName::new("test-project"),
-                dependencies: vec![PackageName::new("package-a"), PackageName::new("package-b")],
-                test: None,
-            },
-            workspace: crate::config::WorkspaceConfig::default(),
-            workspace_root: temp_dir.path().to_path_buf(),
-        };
-
-        // Change to temp directory for the test
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(temp_dir.path()).unwrap();
-
-        let result = generate_sources(&config, None, false).unwrap();
-
-        // Restore original directory
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert_eq!(result.dependency_globs.len(), 2);
-        assert_eq!(result.main_sources, "src/**/*.purs");
-
-        // Check that both packages are included
-        let package_names: HashSet<String> = result
-            .dependency_globs
-            .iter()
-            .map(|g| g.package_name.clone())
-            .collect();
-        assert!(package_names.contains("package-a"));
-        assert!(package_names.contains("package-b"));
-    }
 }

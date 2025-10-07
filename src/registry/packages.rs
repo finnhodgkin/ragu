@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::registry::types::{Package, PackageName};
+use crate::registry::{
+    types::{Package, PackageName},
+    LocalPackage,
+};
 
 use super::types::PackageSet;
 
@@ -41,6 +44,16 @@ impl<'a> PackageQuery<'a> {
             .filter(|(_, pkg)| predicate(pkg))
             .map(|(_, pkg)| pkg)
             .collect()
+    }
+
+    pub fn local_packages(&self) -> Vec<&LocalPackage> {
+        let mut result = Vec::new();
+        for (_, package) in self.package_set {
+            if let Package::Local(package) = package {
+                result.push(package);
+            }
+        }
+        result
     }
 
     /// Get all direct dependencies of a package

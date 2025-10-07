@@ -1,7 +1,6 @@
 use anyhow::Result;
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
 
 use crate::config::SpagoConfig;
 use crate::install::InstallManager;
@@ -11,8 +10,9 @@ use crate::registry::{PackageName, PackageQuery, PackageSet};
 pub fn cleanup_unused_packages(
     config: &SpagoConfig,
     package_set: &PackageSet,
-    spago_dir: &Path,
 ) -> Result<Vec<String>> {
+    let spago_dir = config.spago_dir();
+
     if !spago_dir.exists() {
         return Ok(Vec::new());
     }
@@ -22,7 +22,7 @@ pub fn cleanup_unused_packages(
     let mut required_packages = HashSet::new();
     let mut processed = HashSet::new();
 
-    let manager = InstallManager::new(spago_dir)?;
+    let manager = InstallManager::new(&spago_dir)?;
 
     // Collect all dependencies from spago.yaml
     for dep in config.all_dependencies() {
@@ -38,7 +38,7 @@ pub fn cleanup_unused_packages(
     let mut installed_packages = Vec::new();
     let mut removed_packages = Vec::new();
 
-    if let Ok(entries) = fs::read_dir(spago_dir) {
+    if let Ok(entries) = fs::read_dir(&spago_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {

@@ -2,6 +2,7 @@ package:
   name: nested
   dependencies:
     - effect
+    - aff
   test:
     main: Test.Main
     dependencies: []

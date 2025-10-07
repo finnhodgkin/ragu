@@ -3,6 +3,7 @@ use colored::Colorize;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::config::load_config_cwd;
 use crate::install::cache::GlobalPackageCache;
 use crate::registry::{clear_cache, clear_cache_for_tag, clear_tags_cache, get_cache_dir};
 
@@ -94,10 +95,12 @@ pub fn clear(also_clear_output: bool) -> Result<()> {
     let package_cache = GlobalPackageCache::new()?;
     package_cache.clear_all()?;
 
+    let config = load_config_cwd()?;
+
     if also_clear_output {
         // clear .spago and output directories
-        fs::remove_dir_all(PathBuf::from(".spago"))?;
-        fs::remove_dir_all(PathBuf::from("output"))?;
+        fs::remove_dir_all(config.spago_dir())?;
+        fs::remove_dir_all(config.output_dir())?;
         println!("Output and .spago directories also cleared");
     }
 

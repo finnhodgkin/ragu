@@ -120,6 +120,18 @@ impl SpagoConfig {
 
         crate::registry::get_package_set(&package_set_tag, false)
     }
+
+    pub fn spago_dir(&self) -> PathBuf {
+        self.workspace_root.join(".spago")
+    }
+
+    pub fn output_dir(&self) -> PathBuf {
+        self.workspace_root.join("output")
+    }
+
+    pub fn is_workspace_root(&self) -> bool {
+        self.workspace_root == PathBuf::from(".")
+    }
 }
 
 #[cfg(test)]

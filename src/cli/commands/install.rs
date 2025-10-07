@@ -8,19 +8,17 @@ use crate::registry::{PackageName, PackageQuery, PackageSet};
 
 /// Execute the install command
 pub async fn execute(packages: &[String], package_set: &PackageSet, verbose: bool) -> Result<()> {
-    let spago_dir = PathBuf::from(".spago");
-
     if packages.is_empty() {
         // Install all dependencies from spago.yaml
-        install_all_from_config(&spago_dir, verbose).await
+        install_all_from_config(verbose).await
     } else {
         // Install specific packages
-        install_specific_packages(packages, package_set, &spago_dir, verbose).await
+        install_specific_packages(packages, package_set, verbose).await
     }
 }
 
 /// Install all dependencies from spago.yaml
-async fn install_all_from_config(spago_dir: &PathBuf, verbose: bool) -> Result<()> {
+async fn install_all_from_config(verbose: bool) -> Result<()> {
     if verbose {
         println!("Loading spago.yaml configuration...");
     }
@@ -38,10 +36,10 @@ async fn install_all_from_config(spago_dir: &PathBuf, verbose: bool) -> Result<(
     let package_set = config.package_set()?;
 
     // Install all dependencies
-    let result = install_all_dependencies(&config, &package_set, spago_dir).await?;
+    let result = install_all_dependencies(&config, &package_set).await?;
 
     // Clean up unused packages
-    let removed_packages = cleanup_unused_packages(&config, &package_set, spago_dir)?;
+    let removed_packages = cleanup_unused_packages(&config, &package_set)?;
 
     // Report results
     if result.is_success() {
@@ -99,7 +97,6 @@ async fn install_all_from_config(spago_dir: &PathBuf, verbose: bool) -> Result<(
 async fn install_specific_packages(
     packages: &[String],
     package_set: &PackageSet,
-    spago_dir: &PathBuf,
     verbose: bool,
 ) -> Result<()> {
     // Validate packages exist in package set
@@ -123,7 +120,7 @@ async fn install_specific_packages(
         .context("Failed to update spago.yaml")?;
 
     // Install packages with all their dependencies
-    install_all_from_config(spago_dir, verbose).await?;
+    install_all_from_config(verbose).await?;
 
     Ok(())
 }

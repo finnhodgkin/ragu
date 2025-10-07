@@ -16,8 +16,6 @@ pub async fn execute(
         anyhow::bail!("No packages specified to uninstall");
     }
 
-    let spago_dir = PathBuf::from(".spago");
-
     if verbose {
         println!(
             "Uninstalling packages: {}",
@@ -61,7 +59,7 @@ pub async fn execute(
     }
 
     // Clean up unused packages from .spago directory
-    let removed_packages = cleanup_unused_packages(&updated_config, package_set, &spago_dir)?;
+    let removed_packages = cleanup_unused_packages(&updated_config, package_set)?;
 
     // Report results
     if !removed_packages.is_empty() {
