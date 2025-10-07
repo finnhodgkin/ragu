@@ -2,11 +2,10 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::collections::HashSet;
 use std::fs;
-use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use crate::config::SpagoConfig;
-use crate::install::{install_all_dependencies, InstallManager};
+use crate::install::InstallManager;
 use crate::registry::{Package, PackageName, PackageQuery, PackageSet};
 
 /// Build command result containing source globs for each dependency
@@ -28,111 +27,6 @@ pub struct DependencyGlob {
     /// Local path to the dependency
     #[allow(dead_code)]
     pub local_path: PathBuf,
-}
-
-/// Execute the build command
-pub async fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
-    if verbose {
-        println!("{} Build command executing", "→".cyan());
-        println!("  Watch: {}", watch);
-        println!("  Clear: {}", clear);
-    }
-
-    // Load spago.yaml configuration
-    let config =
-        crate::config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-
-    let package_set = config.package_set()?;
-
-    install_all_dependencies(&config, &package_set).await?;
-
-    // Generate source globs for dependencies
-    let sources = generate_sources(&config, Some(package_set), verbose)?;
-
-    if verbose {
-        println!(
-            "{} Generated {} dependency globs",
-            "→".cyan(),
-            sources.dependency_globs.len()
-        );
-        for glob in &sources.dependency_globs {
-            println!("  {}: {}", glob.package_name.blue(), glob.glob_pattern);
-        }
-    }
-
-    // Collect all source globs into a Vec
-    let mut all_sources = sources
-        .dependency_globs
-        .iter()
-        .map(|g| g.glob_pattern.clone())
-        .collect::<Vec<String>>();
-
-    all_sources.push(sources.main_sources.clone());
-    // Build the purs compiler command
-    let mut command = std::process::Command::new("purs");
-    command.arg("compile");
-
-    // Add all source globs as arguments
-    command.args(&all_sources);
-
-    if verbose {
-        println!("{} Running purs compiler...", "→".cyan());
-    }
-    // Run the compiler with streaming output
-    let mut child = command
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .context("Failed to start purs compiler")?;
-
-    // Stream stdout and stderr concurrently using threads
-    let stdout_thread = if let Some(stdout) = child.stdout.take() {
-        let stdout_reader = std::io::BufReader::new(stdout);
-        Some(std::thread::spawn(move || {
-            for line in stdout_reader.lines() {
-                if let Ok(line) = line {
-                    println!("{}", line);
-                }
-            }
-        }))
-    } else {
-        None
-    };
-
-    let stderr_thread = if let Some(stderr) = child.stderr.take() {
-        let stderr_reader = std::io::BufReader::new(stderr);
-        Some(std::thread::spawn(move || {
-            for line in stderr_reader.lines() {
-                if let Ok(line) = line {
-                    eprintln!("{}", line);
-                }
-            }
-        }))
-    } else {
-        None
-    };
-
-    // Wait for output threads to finish
-    if let Some(stdout_thread) = stdout_thread {
-        stdout_thread.join().unwrap();
-    }
-    if let Some(stderr_thread) = stderr_thread {
-        stderr_thread.join().unwrap();
-    }
-
-    // Wait for completion
-    let status = child.wait().context("Failed to wait for purs compiler")?;
-
-    if !status.success() {
-        return Err(anyhow::anyhow!("Compilation failed"));
-    }
-
-    println!("{} Compilation successful", "✓".green());
-    if verbose {
-        println!("  Compiled {} source files", all_sources.len());
-    }
-
-    Ok(())
 }
 
 /// Execute the sources command - outputs just the source globs for piping

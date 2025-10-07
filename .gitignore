@@ -1,4 +1,4 @@
 /target
 .spago
 output
-/benches/workspace-benchmark
+examples/benches/workspace-benchmark

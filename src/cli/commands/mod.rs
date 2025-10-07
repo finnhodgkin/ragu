@@ -1,4 +1,3 @@
-mod build;
 mod cache;
 mod info;
 mod install;
@@ -95,10 +94,9 @@ pub fn execute_command(cli: Cli) -> Result<()> {
                 cli.verbose,
             ))
         }
-        Command::Build { watch, clear } => {
-            tokio::runtime::Runtime::new()?.block_on(build::execute(watch, clear, cli.verbose))
-        }
-        Command::Sources => build::execute_sources(cli.verbose),
+        Command::Build { watch, clear } => tokio::runtime::Runtime::new()?
+            .block_on(crate::build::execute(watch, clear, cli.verbose)),
+        Command::Sources => crate::sources::execute_sources(cli.verbose),
         Command::Cache { action } => match action {
             CacheAction::Info => cache::info(),
             CacheAction::Clear { all } => cache::clear(all),
