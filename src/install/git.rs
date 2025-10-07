@@ -82,7 +82,7 @@ pub fn fetch_package(package: &PackageSetPackage, spago_dir: &Path) -> Result<Pa
     })
 }
 
-/// Prune a package directory to only keep README and src folders
+/// Prune a package directory to only keep README, spago.yaml and src folders
 pub fn prune_package(package_dir: &Path) -> Result<()> {
     let entries = fs::read_dir(package_dir).context("Failed to read package directory")?;
 
@@ -94,12 +94,13 @@ pub fn prune_package(package_dir: &Path) -> Result<()> {
             .and_then(|n| n.to_str())
             .unwrap_or("");
 
-        // Keep only README files and src directory
+        // Keep only README, spago.yaml and src directory
         let should_keep = file_name == "src"
             || file_name == "README.md"
             || file_name == "readme.md"
             || file_name == "README"
-            || file_name == "readme";
+            || file_name == "readme"
+            || file_name == "spago.yaml";
 
         if !should_keep {
             if entry_path.is_dir() {

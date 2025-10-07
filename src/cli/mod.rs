@@ -125,7 +125,11 @@ pub enum CacheAction {
     Info,
 
     /// Clear all cached package sets
-    Clear,
+    Clear {
+        /// Clear the .spago and output directories as well
+        #[arg(short = 'a', long)]
+        all: bool,
+    },
 
     /// Clear cache for a specific tag
     Remove {

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 use std::fs;
+use std::path::PathBuf;
 
 use crate::install::cache::GlobalPackageCache;
 use crate::registry::{clear_cache, clear_cache_for_tag, clear_tags_cache, get_cache_dir};
@@ -82,7 +83,7 @@ pub fn info() -> Result<()> {
     Ok(())
 }
 
-pub fn clear() -> Result<()> {
+pub fn clear(also_clear_output: bool) -> Result<()> {
     println!("\nClearing cache...");
 
     // Clear package set cache
@@ -92,6 +93,13 @@ pub fn clear() -> Result<()> {
     // Clear global package cache
     let package_cache = GlobalPackageCache::new()?;
     package_cache.clear_all()?;
+
+    if also_clear_output {
+        // clear .spago and output directories
+        fs::remove_dir_all(PathBuf::from(".spago"))?;
+        fs::remove_dir_all(PathBuf::from("output"))?;
+        println!("Output and .spago directories also cleared");
+    }
 
     println!("Cache cleared (package sets and packages)");
     println!();

@@ -101,7 +101,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         Command::Sources => build::execute_sources(cli.verbose),
         Command::Cache { action } => match action {
             CacheAction::Info => cache::info(),
-            CacheAction::Clear => cache::clear(),
+            CacheAction::Clear { all } => cache::clear(all),
             CacheAction::Remove { tag } => cache::remove(&tag),
         },
         Command::Stats => {

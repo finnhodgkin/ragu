@@ -11,6 +11,7 @@ use crate::registry::{get_cache_dir, PackageName};
 pub struct CachedPackage {
     pub name: PackageName,
     pub version: String,
+    pub key: String,
     pub repo_url: String,
     pub cached_path: PathBuf,
     pub installed_at: chrono::DateTime<chrono::Utc>,
@@ -23,7 +24,7 @@ pub struct GlobalPackageCache {
     index_path: PathBuf,
 }
 
-const CACHE_KEY: &str = "spago-rust-0.0.1";
+const CACHE_KEY: &str = "spago-rust-0.0.2";
 
 type Index = HashMap<PackageName, CachedPackage>;
 
@@ -79,7 +80,7 @@ impl GlobalPackageCache {
         let index = self.load_index()?;
         Ok(index
             .get(name)
-            .filter(|cached| cached.version == version)
+            .filter(|cached| cached.version == version && cached.key == CACHE_KEY)
             .map(|cached| cached.cached_path.clone()))
     }
 
@@ -107,6 +108,7 @@ impl GlobalPackageCache {
             CachedPackage {
                 name: name.clone(),
                 version: version.to_string(),
+                key: CACHE_KEY.to_string(),
                 repo_url: String::new(), // Will be filled by caller
                 cached_path: cached_path.clone(),
                 installed_at: chrono::Utc::now(),
