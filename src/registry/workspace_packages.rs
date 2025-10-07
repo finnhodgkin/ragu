@@ -8,12 +8,11 @@ use crate::registry::{LocalPackage, Package, PackageSet};
 const SKIP_DIRS: [&str; 3] = [".spago", "node_modules", "output"];
 
 /// Add local workspace packages to the package set so they can be accessed
-/// in the build proces from the start
+/// in the build process from the start
 pub fn add_workspace_packages(package_set: &mut PackageSet, workspace_root: &PathBuf) {
     for entry in WalkDir::new(workspace_root)
         .min_depth(1)
         .max_depth(5)
-        .follow_links(false)
         .into_iter()
         .filter_entry(|e| {
             // Skip hidden directories and our skip list
@@ -26,8 +25,13 @@ pub fn add_workspace_packages(package_set: &mut PackageSet, workspace_root: &Pat
             Err(_) => continue,
         };
 
+        let root_spago_yaml = workspace_root.join("spago.yaml");
+
         // Look for spago.yaml files
-        if entry.file_type().is_file() && entry.file_name() == "spago.yaml" {
+        if entry.file_type().is_file()
+            && entry.file_name() == "spago.yaml"
+            && entry.path() != root_spago_yaml
+        {
             if let Ok(config) = crate::config::load_config(entry.path()) {
                 let path = entry.path().parent().unwrap().to_path_buf();
                 // Add the package to our set

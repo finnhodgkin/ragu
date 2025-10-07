@@ -2,6 +2,7 @@ package:
   name: nested-2
   dependencies:
     - nested
+    - console
   test:
     main: Test.Main
     dependencies: []

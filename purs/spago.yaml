@@ -1,10 +1,5 @@
 package:
   name: spago-rust
-  dependencies:
-    - effect
-    - halogen
-    - prelude
-    - graphql-client
   test:
     main: Test.Main
     dependencies: []
