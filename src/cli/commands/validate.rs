@@ -61,7 +61,7 @@ pub fn execute(path: Option<String>, force_refresh: bool, verbose: bool) -> Resu
 
     if !has_errors && result.warnings.is_empty() {
         // Success - show minimal success message
-        println!("{} Configuration is valid!", "✓".green().bold());
+        println!("{} Configuration is valid", "✓".green().bold());
 
         if verbose {
             let all_deps = config.all_dependencies();

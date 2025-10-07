@@ -1,10 +1,12 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::config::{load_config_cwd, ExtraPackageConfig};
 use crate::registry::types::{PackageInSet, PackageName, PackageSetPackage};
-use crate::registry::{clear_cache_for_tag, Package};
+use crate::registry::{clear_cache_for_tag, LocalPackage, Package};
 
 use super::cache::{load_cached_tags, load_from_cache, save_cached_tags, save_to_cache};
 use super::types::PackageSet;
@@ -65,7 +67,7 @@ fn fetch_from_github(tag: &str) -> Result<PackageSet> {
 pub fn get_package_set(tag: &str, force_refresh: bool) -> Result<PackageSet> {
     // Try loading from cache first (unless force refresh)
 
-    let package_set = match load_from_cache(tag) {
+    let mut package_set = match load_from_cache(tag) {
         Ok(Some(cached)) if !force_refresh => cached,
         Ok(_) => fetch_from_github(tag)?,
         Err(_) => {
@@ -77,10 +79,58 @@ pub fn get_package_set(tag: &str, force_refresh: bool) -> Result<PackageSet> {
     // Save to cache
     save_to_cache(tag, &package_set)?;
 
+    let config = load_config_cwd()?;
+
+    let extra_packages = config.workspace.extra_packages;
+
     // Add extra packages. These won't be saved to cache because they are not part of the package set.
-    // add_extra_packages(&package_set);
+    add_extra_packages(&mut package_set, &extra_packages);
 
     Ok(package_set)
+}
+
+fn add_extra_packages(
+    package_set: &mut PackageSet,
+    extra_packages: &HashMap<PackageName, ExtraPackageConfig>,
+) {
+    for (name, package) in extra_packages {
+        match (package.git.as_ref(), package.path.as_ref()) {
+            (Some(git), None) => {
+                package_set.insert(
+                    name.clone(),
+                    Package::Remote(PackageSetPackage {
+                        name: name.clone(),
+                        dependencies: package
+                            .dependencies
+                            .as_ref()
+                            .unwrap_or(&vec![])
+                            .iter()
+                            .map(|d| PackageName::new(d))
+                            .collect(),
+                        repo: git.clone(),
+                        version: package.ref_.clone().unwrap_or_default(),
+                    }),
+                );
+            }
+            (None, Some(path)) => {
+                package_set.insert(
+                    name.clone(),
+                    Package::Local(LocalPackage {
+                        name: name.clone(),
+                        dependencies: package
+                            .dependencies
+                            .as_ref()
+                            .unwrap_or(&vec![])
+                            .iter()
+                            .map(|d| PackageName::new(d))
+                            .collect(),
+                        path: PathBuf::from(path.clone()),
+                    }),
+                );
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Response from GitHub API when listing tags

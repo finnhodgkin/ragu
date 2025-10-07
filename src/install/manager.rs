@@ -6,7 +6,6 @@ use std::sync::Arc;
 use tokio::task;
 
 use super::cache::GlobalPackageCache;
-use super::extra::install_extra_package;
 use super::git::{fetch_package, PackageInfo};
 use crate::config::{ExtraPackageConfig, SpagoConfig};
 use crate::registry::{Package, PackageName, PackageQuery, PackageSet};

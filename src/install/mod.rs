@@ -6,7 +6,6 @@ mod manager;
 
 pub use cache::GlobalPackageCache;
 pub use cleanup::cleanup_unused_packages;
-pub use extra::install_extra_package;
 pub use git::{fetch_package, PackageInfo as GitPackageInfo};
 pub use manager::{InstallManager, InstallResult};
 
