@@ -1,10 +1,12 @@
 mod build;
 mod cli;
 mod config;
+mod imports;
 mod install;
 mod modules;
 mod registry;
 mod sources;
+mod workspace;
 
 use clap::Parser;
 

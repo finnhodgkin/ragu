@@ -129,6 +129,13 @@ pub enum Command {
         #[arg(short = 'n', long)]
         names_only: bool,
     },
+
+    Workspace,
+
+    CheckDeps,
+
+    /// Analyze imports in source files and categorize them
+    Imports,
 }
 
 #[derive(Subcommand, Debug)]

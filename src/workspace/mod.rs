@@ -1,0 +1,164 @@
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+
+use anyhow::Result;
+
+use crate::config::load_config_cwd;
+use crate::imports::extract_imports_from_sources;
+use crate::modules::{discover_all_modules, find_module_by_name, ModuleInfo};
+use crate::registry::{PackageName, PackageQuery};
+
+pub fn execute_local_packages() -> Result<()> {
+    let config = load_config_cwd()?;
+    let package_set = config.package_set()?;
+    let query = PackageQuery::new(&package_set);
+
+    let all_local_packages = query.local_packages();
+    for package in all_local_packages {
+        println!("{}", package.path.display());
+    }
+
+    Ok(())
+}
+
+pub fn check_deps() -> Result<()> {
+    let stats = fetch_workspace_dependency_stats()?;
+    let config = load_config_cwd()?;
+    let package_set = config.package_set()?;
+    let query = PackageQuery::new(&package_set);
+
+    let all_local_packages = query.local_packages();
+    for package in all_local_packages {
+        display_dependency_stats(&package.name, &stats);
+    }
+    Ok(())
+}
+
+pub struct DependencyStats {
+    pub to_install: HashMap<PackageName, HashSet<PackageName>>,
+    pub to_uninstall: HashMap<PackageName, HashSet<PackageName>>,
+    pub not_found: HashMap<PackageName, HashSet<String>>,
+}
+
+pub fn fetch_workspace_dependency_stats() -> Result<DependencyStats> {
+    let config = load_config_cwd()?;
+    let package_set = config.package_set()?;
+    let query = PackageQuery::new(&package_set);
+
+    let all_local_packages = query.local_packages();
+
+    let workspace_root_config =
+        crate::config::load_config(Path::join(&config.workspace_root, "spago.yaml"))?;
+
+    // Use current project config for both sources and workspace sources
+    // This ensures we're looking in the correct .spago directory (current project's)
+    // but with access to the workspace root's package set
+    let workspace_sources = crate::sources::generate_sources(
+        &workspace_root_config,
+        Some(package_set.clone()),
+        true,
+        false,
+    )?;
+
+    let workspace_modules = discover_all_modules(&workspace_sources)?
+        .iter()
+        .map(|m| (m.name.clone(), PackageName::new(&m.package_name)))
+        .collect::<HashMap<String, PackageName>>();
+
+    let mut to_install: HashMap<PackageName, HashSet<PackageName>> = HashMap::new();
+    let mut to_uninstall: HashMap<PackageName, HashSet<PackageName>> = HashMap::new();
+    let mut not_found: HashMap<PackageName, HashSet<String>> = HashMap::new();
+
+    for local_package in all_local_packages {
+        let imports = extract_imports_from_sources(local_package.path.as_path())?;
+        let deps: HashSet<&PackageName> = local_package.dependencies.iter().collect();
+        let mut installed = HashSet::new();
+        for import in imports {
+            if PRIMITIVE.contains(&import.module_name.as_str()) {
+                continue; // Is primitive, ignore
+            }
+            if let Some(import_package) = workspace_modules.get(&import.module_name) {
+                if import_package.0 == local_package.name.0 {
+                    continue; // Is current package, ignore
+                }
+                if deps.contains(import_package) {
+                    installed.insert(import_package);
+                    continue; // direct dependency, ignore
+                }
+
+                to_install
+                    .entry(local_package.name.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(import_package.clone());
+            } else {
+                not_found
+                    .entry(local_package.name.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(import.module_name);
+            }
+        }
+
+        for dep in deps {
+            if !installed.contains(dep) {
+                to_uninstall
+                    .entry(local_package.name.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(dep.clone());
+            }
+        }
+    }
+
+    Ok(DependencyStats {
+        to_install,
+        to_uninstall,
+        not_found,
+    })
+}
+
+pub fn display_dependency_stats(package: &PackageName, stats: &DependencyStats) {
+    let to_install = stats.to_install.get(package);
+    let to_uninstall = stats.to_uninstall.get(package);
+    let not_found = stats.not_found.get(package);
+
+    if to_install.is_some() || to_uninstall.is_some() || not_found.is_some() {
+        println!("");
+        println!("Package: {}", package.0);
+    }
+
+    if let Some(to_install) = to_install {
+        println!(
+            "spago-rust install {}",
+            to_install
+                .iter()
+                .map(|p| p.0.clone())
+                .collect::<Vec<String>>()
+                .join(" ")
+        );
+    }
+
+    if let Some(to_uninstall) = to_uninstall {
+        println!(
+            "spago-rust uninstall {}",
+            to_uninstall
+                .iter()
+                .map(|p| p.0.clone())
+                .collect::<Vec<String>>()
+                .join(" ")
+        );
+    }
+
+    if let Some(not_found) = not_found {
+        println!("");
+        println!("Not found:");
+        println!(
+            "Dependencies not found in workspace: {}",
+            not_found
+                .iter()
+                .map(|p| p.clone())
+                .collect::<Vec<String>>()
+                .join(" ")
+        );
+    }
+}
+
+const PRIMITIVE: [&str; 4] = ["Prim.Row", "Prim.RowList", "Prim.Symbol", "Prim.TypeError"];

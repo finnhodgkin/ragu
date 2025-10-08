@@ -15,6 +15,7 @@ use crate::registry::{
     get_package_set, list_available_tags, list_available_tags_with_options, PackageName,
     PackageQuery,
 };
+use crate::{imports, workspace};
 
 /// Execute the CLI command
 pub fn execute_command(cli: Cli) -> Result<()> {
@@ -126,7 +127,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
 
             // Generate sources
             let sources =
-                crate::sources::generate_sources(&config, Some(package_set), cli.verbose)?;
+                crate::sources::generate_sources(&config, Some(package_set), false, cli.verbose)?;
 
             // Execute modules command
             let options = crate::modules::ModulesOptions {
@@ -137,5 +138,8 @@ pub fn execute_command(cli: Cli) -> Result<()> {
 
             crate::modules::execute_modules_command(&config, &sources, options)
         }
+        Command::Imports => imports::execute(cli.verbose),
+        Command::Workspace => workspace::execute_local_packages(),
+        Command::CheckDeps => workspace::check_deps(),
     }
 }

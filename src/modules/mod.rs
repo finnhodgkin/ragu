@@ -65,7 +65,7 @@ fn discover_modules_from_glob(glob_pattern: &str, package_name: &str) -> Result<
 }
 
 /// Extract module name from a PureScript file
-fn extract_module_name_from_file(file_path: &Path) -> Result<String> {
+pub fn extract_module_name_from_file(file_path: &Path) -> Result<String> {
     let content = fs::read_to_string(file_path).context("Failed to read file")?;
 
     extract_module_name_from_content(&content)

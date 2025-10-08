@@ -40,7 +40,7 @@ pub fn execute_sources(verbose: bool) -> Result<()> {
         crate::config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
     // Generate source globs for dependencies
-    let sources = generate_sources(&config, None, verbose)?;
+    let sources = generate_sources(&config, None, false, verbose)?;
 
     // Output main sources
     println!("{}", sources.main_sources);
@@ -57,6 +57,7 @@ pub fn execute_sources(verbose: bool) -> Result<()> {
 pub fn generate_sources(
     config: &SpagoConfig,
     package_set: Option<PackageSet>,
+    all: bool,
     verbose: bool,
 ) -> Result<BuildSources> {
     let spago_dir = &config.spago_dir();
@@ -78,7 +79,7 @@ pub fn generate_sources(
     let manager = InstallManager::new(spago_dir)?;
     let query = PackageQuery::new(&package_set);
 
-    let direct_package_dependencies: Vec<PackageName> = if config.is_workspace_root() {
+    let direct_package_dependencies: Vec<PackageName> = if config.is_workspace_root() || all {
         query.all_workspace_dependencies()
     } else {
         config.package_dependencies().into_iter().cloned().collect()
