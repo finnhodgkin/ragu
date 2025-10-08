@@ -113,5 +113,29 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             Ok(())
         }
         Command::Validate { path } => validate::execute(path, cli.force_refresh, cli.verbose),
+        Command::Modules {
+            group_by_package,
+            package,
+            names_only,
+        } => {
+            // Load spago.yaml configuration
+            let config = crate::config::load_config_cwd()
+                .context("Failed to load spago.yaml configuration")?;
+
+            let package_set = config.package_set()?;
+
+            // Generate sources
+            let sources =
+                crate::sources::generate_sources(&config, Some(package_set), cli.verbose)?;
+
+            // Execute modules command
+            let options = crate::modules::ModulesOptions {
+                group_by_package,
+                package_filter: package,
+                names_only,
+            };
+
+            crate::modules::execute_modules_command(&config, &sources, options)
+        }
     }
 }

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use colored::Colorize;
 use std::fs;
-use std::path::PathBuf;
 
 use crate::config::load_config_cwd;
 use crate::install::cache::GlobalPackageCache;

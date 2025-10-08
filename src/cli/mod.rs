@@ -114,6 +114,21 @@ pub enum Command {
         #[arg(short = 'p', long)]
         path: Option<String>,
     },
+
+    /// List all modules in the project and dependencies
+    Modules {
+        /// Show modules grouped by package
+        #[arg(short = 'g', long)]
+        group_by_package: bool,
+
+        /// Filter modules by package name
+        #[arg(short = 'p', long)]
+        package: Option<String>,
+
+        /// Show only module names (no additional info)
+        #[arg(short = 'n', long)]
+        names_only: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

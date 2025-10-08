@@ -2,6 +2,7 @@ mod build;
 mod cli;
 mod config;
 mod install;
+mod modules;
 mod registry;
 mod sources;
 
