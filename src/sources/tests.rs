@@ -325,4 +325,56 @@ mod tests {
         let error = result.unwrap_err();
         assert!(error.to_string().contains("Package prelude not found"));
     }
+
+    #[test]
+    fn test_generate_sources_circular_dependency_does_not_include_current_package() {
+        let (_temp_dir, spago_dir) = create_test_spago_dir();
+
+        // Create a config where the current package depends on itself (circular dependency)
+        let mut config = create_test_config(&spago_dir);
+        config.package.dependencies = vec![
+            PackageName::new("prelude"),
+            PackageName::new("console"),
+            config.package.name.clone(), // Add self as dependency (circular)
+        ];
+
+        let mut package_set = create_test_package_set();
+
+        // Add the current package to the package set for circular dependency test
+        package_set.insert(
+            config.package.name.clone(),
+            Package::Local(LocalPackage {
+                name: config.package.name.clone(),
+                path: PathBuf::from("./test"),
+                dependencies: vec![], // The circular dependency is in the config, not the package set
+            }),
+        );
+
+        // Create package directories
+        create_test_package_dir(&spago_dir, "prelude");
+        create_test_package_dir(&spago_dir, "console");
+        // Don't create directory for the current package (test-package) since it's the main package
+
+        let result = generate_sources(&config, Some(package_set), false);
+
+        assert!(result.is_ok());
+        let sources = result.unwrap();
+
+        // Check that the current package is NOT included in dependency globs
+        let glob_names: Vec<String> = sources
+            .dependency_globs
+            .iter()
+            .map(|g| g.package_name.clone())
+            .collect();
+
+        // Should not include the current package name in dependency globs
+        assert!(!glob_names.contains(&config.package.name.0));
+
+        // Should still include other dependencies
+        assert!(glob_names.contains(&"prelude".to_string()));
+        assert!(glob_names.contains(&"console".to_string()));
+
+        // Main sources should still be present
+        assert_eq!(sources.main_sources, "./src/**/*.purs");
+    }
 }

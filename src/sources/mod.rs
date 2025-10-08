@@ -98,6 +98,13 @@ pub fn generate_sources(
     let mut dependency_globs = Vec::new();
     // Generate globs for each dependency (including transitive ones)
     for dep_name in all_dependencies {
+        // The current package should be handled by main sources instead.
+        // This generally shouldn't happen, but if there are funky local
+        // circular deps, this will prevent multiple sources the for the same
+        // package.
+        if dep_name == config.package.name {
+            continue;
+        }
         if let Some(glob) = generate_dependency_glob(&dep_name, spago_dir, &package_set, verbose)? {
             if glob.glob_pattern != main_sources {
                 dependency_globs.push(glob);
