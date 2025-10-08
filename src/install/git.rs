@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use git2::Repository;
 use std::fs;
 use std::path::Path;
 
@@ -20,56 +19,44 @@ pub fn fetch_package(package: &PackageSetPackage, spago_dir: &Path) -> Result<Pa
     let folder_name = package.name.0.clone();
     let package_dir = spago_dir.join(&folder_name);
 
-    // Check if package is already installed with the correct version
-    if package_dir.exists() {
-        if let Ok(repo) = Repository::open(&package_dir) {
-            // Check if we're on the right tag/commit
-            if let Ok(reference) = repo.find_reference(&format!("refs/tags/{}", package.version)) {
-                if let Some(oid) = reference.target() {
-                    if let Ok(head) = repo.head() {
-                        if let Some(head_oid) = head.target() {
-                            if head_oid == oid {
-                                return Ok(PackageInfo {
-                                    name: package_name,
-                                    version: package.version.clone(),
-                                    repo_url: package.repo.clone(),
-                                    local_path: package_dir,
-                                });
-                            }
-                        }
-                    }
-                }
+    // Clone the repository and checkout the specific tag
+    let callbacks = git2::RemoteCallbacks::new();
+    let mut fetch_options = git2::FetchOptions::new();
+    fetch_options.remote_callbacks(callbacks);
+
+    let mut builder = git2::build::RepoBuilder::new();
+    builder.fetch_options(fetch_options);
+
+    // Clone the repository first
+    let repo = match builder.clone(&package.repo, &package_dir) {
+        Ok(repo) => repo,
+        Err(e) => {
+            // Clean up any partial clone if it exists
+            if package_dir.exists() {
+                let _ = fs::remove_dir_all(&package_dir);
             }
+            return Err(e).context(format!("Failed to clone repository for {}", package_name.0));
         }
-    }
+    };
 
-    // Clone or update the repository
-    if package_dir.exists() {
-        // Update existing repository
-        let repo = Repository::open(&package_dir).context("Failed to open existing repository")?;
-
-        // Fetch latest changes
-        let mut remote = repo
-            .find_remote("origin")
-            .context("Failed to find origin remote")?;
-
-        remote
-            .fetch(&[] as &[&str], None, None)
-            .context("Failed to fetch from remote")?;
-
-        // For now, just use the latest commit
-        // TODO: Implement proper version/tag checking
-    } else {
-        // Clone new repository
-        Repository::clone(&package.repo, &package_dir).context("Failed to clone repository")?;
-    }
-
-    // Open the repository to get current state
-    let repo = Repository::open(&package_dir).context("Failed to open repository")?;
-
-    // Get the current HEAD commit
-    let head = repo.head().context("Failed to get HEAD")?;
-    let head_oid = head.target().context("Failed to get HEAD target")?;
+    // Try to checkout the reference (could be tag, branch, or commit)
+    let (_object, _reference) = repo
+        .revparse_ext(&package.version)
+        .and_then(|result| {
+            // If revparse succeeds, try to checkout the files
+            repo.checkout_tree(&result.0, None).map(|_| result)
+        })
+        .map_err(|e| {
+            // Clean up the directory if any step fails to prevent security risk
+            if package_dir.exists() {
+                let _ = fs::remove_dir_all(&package_dir);
+            }
+            e
+        })
+        .context(format!(
+            "Failed to parse and checkout reference '{}' for {}",
+            package.version, package_name.0
+        ))?;
 
     // Prune the package to only keep README and src folders
     prune_package(&package_dir)?;

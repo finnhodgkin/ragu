@@ -24,7 +24,7 @@ pub struct GlobalPackageCache {
     index_path: PathBuf,
 }
 
-const CACHE_KEY: &str = "spago-rust-0.0.2";
+const CACHE_KEY: &str = "spago-rust-0.0.4";
 
 type Index = HashMap<PackageName, CachedPackage>;
 
