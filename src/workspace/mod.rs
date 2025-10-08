@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::config::load_config_cwd;
+use crate::config::{add_packages_to_config, load_config_cwd, remove_packages_from_config};
 use crate::imports::extract_imports_from_sources;
 use crate::modules::{discover_all_modules, find_module_by_name, ModuleInfo};
-use crate::registry::{PackageName, PackageQuery};
+use crate::registry::{LocalPackage, PackageName, PackageQuery};
 
 pub fn execute_local_packages() -> Result<()> {
     let config = load_config_cwd()?;
@@ -21,15 +21,30 @@ pub fn execute_local_packages() -> Result<()> {
     Ok(())
 }
 
-pub fn check_deps() -> Result<()> {
+pub fn check_deps(
+    package: Option<String>,
+    commands_only: bool,
+    broken_only: bool,
+    fix: bool,
+) -> Result<()> {
     let stats = fetch_workspace_dependency_stats()?;
     let config = load_config_cwd()?;
     let package_set = config.package_set()?;
     let query = PackageQuery::new(&package_set);
 
+    if let Some(package) = package {
+        let package = PackageName::new(&package);
+        display_dependency_stats(&package, &stats, commands_only, broken_only);
+        return Ok(());
+    }
+
     let all_local_packages = query.local_packages();
     for package in all_local_packages {
-        display_dependency_stats(&package.name, &stats);
+        if fix {
+            fix_dependency_issues(&package, &stats)?;
+        } else {
+            display_dependency_stats(&package.name, &stats, commands_only, broken_only);
+        }
     }
     Ok(())
 }
@@ -115,50 +130,110 @@ pub fn fetch_workspace_dependency_stats() -> Result<DependencyStats> {
     })
 }
 
-pub fn display_dependency_stats(package: &PackageName, stats: &DependencyStats) {
+pub fn display_dependency_stats(
+    package: &PackageName,
+    stats: &DependencyStats,
+    commands_only: bool,
+    broken_only: bool,
+) {
     let to_install = stats.to_install.get(package);
     let to_uninstall = stats.to_uninstall.get(package);
     let not_found = stats.not_found.get(package);
 
-    if to_install.is_some() || to_uninstall.is_some() || not_found.is_some() {
-        println!("");
-        println!("Package: {}", package.0);
+    if !commands_only && (!broken_only || not_found.is_some()) {
+        if to_install.is_some() || to_uninstall.is_some() || not_found.is_some() {
+            println!("");
+            println!("Package: {}", package.0);
+        }
     }
 
-    if let Some(to_install) = to_install {
-        println!(
-            "spago-rust install {}",
-            to_install
-                .iter()
-                .map(|p| p.0.clone())
-                .collect::<Vec<String>>()
-                .join(" ")
-        );
-    }
+    if !broken_only {
+        if let Some(to_install) = to_install {
+            println!(
+                "spago-rust install {}",
+                to_install
+                    .iter()
+                    .map(|p| p.0.clone())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            );
+        }
 
-    if let Some(to_uninstall) = to_uninstall {
-        println!(
-            "spago-rust uninstall {}",
-            to_uninstall
-                .iter()
-                .map(|p| p.0.clone())
-                .collect::<Vec<String>>()
-                .join(" ")
-        );
+        if let Some(to_uninstall) = to_uninstall {
+            println!(
+                "spago-rust uninstall {}",
+                to_uninstall
+                    .iter()
+                    .map(|p| p.0.clone())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            );
+        }
     }
-
-    if let Some(not_found) = not_found {
-        println!("");
-        println!("Not found:");
-        println!(
-            "Dependencies not found in workspace: {}",
-            not_found
-                .iter()
-                .map(|p| p.clone())
-                .collect::<Vec<String>>()
-                .join(" ")
-        );
+    if !commands_only {
+        if let Some(not_found) = not_found {
+            println!("");
+            println!("Not found:");
+            println!(
+                "Dependencies not found in workspace: {}",
+                not_found
+                    .iter()
+                    .map(|p| p.clone())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            );
+        }
     }
 }
 
-const PRIMITIVE: [&str; 4] = ["Prim.Row", "Prim.RowList", "Prim.Symbol", "Prim.TypeError"];
+fn fix_dependency_issues(package: &LocalPackage, stats: &DependencyStats) -> Result<()> {
+    let to_install = stats.to_install.get(&package.name);
+    let to_uninstall = stats.to_uninstall.get(&package.name);
+    let not_found = stats.not_found.get(&package.name);
+
+    if let Some(to_install) = to_install {
+        let to_install = to_install
+            .into_iter()
+            .map(|p| p.clone())
+            .collect::<Vec<PackageName>>();
+        add_packages_to_config(
+            &PathBuf::from(Path::join(package.path.as_path(), "spago.yaml")),
+            &to_install,
+        )?;
+    }
+
+    if let Some(to_uninstall) = to_uninstall {
+        let to_uninstall = to_uninstall
+            .into_iter()
+            .map(|p| p.clone())
+            .collect::<Vec<PackageName>>();
+
+        remove_packages_from_config(
+            &PathBuf::from(Path::join(package.path.as_path(), "spago.yaml")),
+            &to_uninstall,
+        )?;
+    }
+
+    if let Some(not_found) = not_found {
+        let not_found = not_found
+            .into_iter()
+            .map(|p| p.clone())
+            .collect::<Vec<String>>();
+
+        println!(
+            "📦 {} had dependencies not found in the workspace:",
+            package.name.0
+        );
+        println!("{}", not_found.join("\n"));
+    }
+
+    Ok(())
+}
+
+const PRIMITIVE: [&str; 5] = [
+    "Prim.Row",
+    "Prim.RowList",
+    "Prim.Symbol",
+    "Prim.TypeError",
+    "Prim.Boolean",
+];

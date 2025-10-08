@@ -130,9 +130,26 @@ pub enum Command {
         names_only: bool,
     },
 
+    /// List all local package in the workspace
     Workspace,
 
-    CheckDeps,
+    /// Check that workspace dependencies are properly configured
+    CheckDeps {
+        /// The local package to check
+        package: Option<String>,
+
+        /// Only show install/uninstall commands
+        #[arg(short = 'c', long)]
+        commands_only: bool,
+
+        /// Only show broken dependencies
+        #[arg(short = 'b', long)]
+        broken_only: bool,
+
+        /// Fix broken dependencies where possible
+        #[arg(short = 'f', long)]
+        fix: bool,
+    },
 
     /// Analyze imports in source files and categorize them
     Imports,

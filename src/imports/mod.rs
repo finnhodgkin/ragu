@@ -52,6 +52,8 @@ pub fn execute(verbose: bool) -> Result<()> {
     // Extract imports from current project's source files
     let imports = extract_imports_from_sources(&std::env::current_dir()?)?;
 
+    println!("Imports: {:?}", imports);
+
     let deps = config.package_dependencies();
     let mut installed = HashSet::new();
     let mut indirect_deps_to_install = HashSet::new();
@@ -201,16 +203,29 @@ fn extract_imports_from_directory(dir: &Path, imports: &mut Vec<ImportInfo>) -> 
 fn extract_imports_from_file(file_path: &Path, imports: &mut Vec<ImportInfo>) -> Result<()> {
     let content = fs::read_to_string(file_path).context("Failed to read file")?;
 
+    let mut is_comment_block = false;
+
     for (line_number, line) in content.lines().enumerate() {
-        let line = line.trim();
+        let line = line.trim_end();
 
         // Skip comments and empty lines
-        if line.is_empty() || line.starts_with("--") {
+        if line.is_empty()
+            || line.starts_with("--")
+            || line.starts_with(" ")
+            || line.starts_with("module ")
+        {
+            continue;
+        } else if line.starts_with("{-") {
+            is_comment_block = true;
+            continue;
+        } else if line.starts_with("-}") {
+            is_comment_block = false;
+            continue;
+        } else if is_comment_block {
             continue;
         }
-
         // Look for import statements
-        if line.starts_with("import ") {
+        else if line.starts_with("import ") {
             if let Some(module_name) = extract_module_name_from_import(line) {
                 imports.push(ImportInfo {
                     module_name,
@@ -218,6 +233,8 @@ fn extract_imports_from_file(file_path: &Path, imports: &mut Vec<ImportInfo>) ->
                     line_number: line_number + 1,
                 });
             }
+        } else {
+            break;
         }
     }
 
@@ -230,14 +247,14 @@ fn extract_module_name_from_import(import_line: &str) -> Option<String> {
     let module_part = import_line.strip_prefix("import ")?;
 
     // Find the end of the module name (before any imports or "as" or "hiding")
-    let module_name = if let Some(import_pos) = module_part.find(" (") {
+    let module_name = if let Some(hiding_pos) = module_part.find(" hiding") {
+        &module_part[..hiding_pos]
+    } else if let Some(import_pos) = module_part.find(" (") {
         &module_part[..import_pos]
     } else if let Some(as_pos) = module_part.find(" as ") {
         &module_part[..as_pos]
-    } else if let Some(hiding_pos) = module_part.find(" hiding ") {
-        &module_part[..hiding_pos]
     } else {
-        module_part
+        module_part.split_whitespace().next().unwrap_or(module_part)
     };
 
     Some(module_name.trim().to_string())

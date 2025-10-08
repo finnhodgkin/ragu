@@ -67,18 +67,27 @@ fn discover_modules_from_glob(glob_pattern: &str, package_name: &str) -> Result<
 /// Extract module name from a PureScript file
 pub fn extract_module_name_from_file(file_path: &Path) -> Result<String> {
     let content = fs::read_to_string(file_path).context("Failed to read file")?;
-
     extract_module_name_from_content(&content)
 }
 
 /// Extract module name from PureScript file content
 fn extract_module_name_from_content(content: &str) -> Result<String> {
+    let mut is_comment_block = false;
     // Look for module declaration at the beginning of the file
     for line in content.lines() {
         let line = line.trim();
 
+        if line.starts_with("{-") {
+            is_comment_block = true;
+        }
+
+        if line.starts_with("-}") {
+            is_comment_block = false;
+            continue;
+        }
+
         // Skip comments and empty lines
-        if line.is_empty() || line.starts_with("--") {
+        if line.is_empty() || line.starts_with("--") || is_comment_block {
             continue;
         }
 
@@ -90,12 +99,12 @@ fn extract_module_name_from_content(content: &str) -> Result<String> {
                 .context("Failed to parse module declaration")?;
 
             // Find the end of the module name (before any exports or "where")
-            let module_name = if let Some(export_pos) = module_part.find(" (") {
-                &module_part[..export_pos]
+            let module_name = if let Some(export_pos) = module_part.find("(") {
+                &module_part[..export_pos].trim()
             } else if let Some(where_pos) = module_part.find(" where") {
-                &module_part[..where_pos]
+                &module_part[..where_pos].trim()
             } else {
-                module_part
+                module_part.trim()
             };
 
             return Ok(module_name.to_string());
@@ -183,6 +192,20 @@ mod tests {
         assert!(extract_module_name_from_content(content).is_err());
 
         // Test module without 'where'
+        let content = "module Data.Maybe\n\nimport Prelude";
+        assert_eq!(
+            extract_module_name_from_content(content).unwrap(),
+            "Data.Maybe"
+        );
+
+        // Test module with brackets and no space
+        let content = "module Data.Maybe(module Exported) where";
+        assert_eq!(
+            extract_module_name_from_content(content).unwrap(),
+            "Data.Maybe"
+        );
+
+        // Test module with newline straight after module dec
         let content = "module Data.Maybe\n\nimport Prelude";
         assert_eq!(
             extract_module_name_from_content(content).unwrap(),

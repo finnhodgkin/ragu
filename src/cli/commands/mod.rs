@@ -140,6 +140,11 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         }
         Command::Imports => imports::execute(cli.verbose),
         Command::Workspace => workspace::execute_local_packages(),
-        Command::CheckDeps => workspace::check_deps(),
+        Command::CheckDeps {
+            package,
+            commands_only,
+            broken_only,
+            fix,
+        } => workspace::check_deps(package, commands_only, broken_only, fix),
     }
 }
