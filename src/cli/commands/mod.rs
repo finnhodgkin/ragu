@@ -11,6 +11,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 
 use crate::cli::{CacheAction, Cli, Command};
+use crate::config::load_config_cwd;
 use crate::registry::{
     get_package_set, list_available_tags, list_available_tags_with_options, PackageName,
     PackageQuery,
@@ -23,39 +24,6 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         println!("{} Verbose mode enabled\n", "→".cyan());
     }
 
-    // Get the tag (either from CLI or latest)
-    let tag = if let Some(tag) = &cli.tag {
-        if cli.verbose {
-            println!("{} Using specified tag: {}", "→".cyan(), tag);
-        }
-        tag.clone()
-    } else {
-        match &cli.command {
-            Command::List { .. } => {
-                // List command doesn't need a package set
-                String::new()
-            }
-            Command::Cache { .. } => {
-                // Cache commands might not need a package set
-                String::new()
-            }
-            _ => {
-                if cli.verbose {
-                    println!("{} Fetching latest package set tag...", "→".cyan());
-                }
-                // Get tags respecting force_refresh
-                let tags = if cli.force_refresh {
-                    list_available_tags_with_options(true, None)?
-                } else {
-                    list_available_tags()?
-                };
-                tags.first()
-                    .cloned()
-                    .context("No tags available in the package-sets repository")?
-            }
-        }
-    };
-
     match cli.command {
         Command::List { all } => list::execute(all, cli.force_refresh),
         Command::Info {
@@ -64,7 +32,9 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             transitive,
             reverse,
         } => {
-            let package_set = get_package_set(&tag, cli.force_refresh)?;
+            let config = crate::config::load_config_cwd()
+                .context("Failed to load spago.yaml configuration")?;
+            let package_set = config.package_set()?;
             let query = PackageQuery::new(&package_set);
             info::execute(
                 &query,
@@ -75,12 +45,16 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             )
         }
         Command::Search { query, details } => {
-            let package_set = get_package_set(&tag, cli.force_refresh)?;
+            let config = crate::config::load_config_cwd()
+                .context("Failed to load spago.yaml configuration")?;
+            let package_set = config.package_set()?;
             let pkg_query = PackageQuery::new(&package_set);
             search::execute(&pkg_query, &query, details)
         }
         Command::Install { packages } => {
-            let package_set = get_package_set(&tag, cli.force_refresh)?;
+            let config = crate::config::load_config_cwd()
+                .context("Failed to load spago.yaml configuration")?;
+            let package_set = config.package_set()?;
             tokio::runtime::Runtime::new()?.block_on(install::execute(
                 &packages,
                 &package_set,
@@ -88,7 +62,9 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             ))
         }
         Command::Uninstall { packages } => {
-            let package_set = get_package_set(&tag, cli.force_refresh)?;
+            let config = crate::config::load_config_cwd()
+                .context("Failed to load spago.yaml configuration")?;
+            let package_set = config.package_set()?;
             tokio::runtime::Runtime::new()?.block_on(uninstall::execute(
                 packages.iter().map(|p| PackageName::new(p)).collect(),
                 &package_set,
@@ -104,9 +80,12 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             CacheAction::Remove { tag } => cache::remove(&tag),
         },
         Command::Stats => {
-            let package_set = get_package_set(&tag, cli.force_refresh)?;
+            // Load spago.yaml configuration
+            let config = crate::config::load_config_cwd()
+                .context("Failed to load spago.yaml configuration")?;
+            let package_set = config.package_set()?;
             let query = PackageQuery::new(&package_set);
-            stats::execute(&query, &tag)
+            stats::execute(&query)
         }
         Command::Init { name } => {
             println!("{} Init command not yet implemented", "⚠".yellow().bold());

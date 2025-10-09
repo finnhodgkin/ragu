@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 
-use super::types::PackageSet;
+use super::types::{PackageSet, RegistryIndex};
 
 /// Cached tags with timestamp
 #[derive(Debug, Serialize, Deserialize)]
@@ -162,6 +162,124 @@ pub fn clear_tags_cache() -> Result<()> {
 
     if cache_path.exists() {
         fs::remove_file(&cache_path).context("Failed to remove tags cache")?;
+    }
+
+    Ok(())
+}
+
+/// Get the registry cache directory
+pub fn get_registry_cache_dir() -> Result<PathBuf> {
+    let cache_dir = dirs::cache_dir()
+        .context("Failed to get system cache directory")?
+        .join("spago-rust")
+        .join("registry");
+
+    fs::create_dir_all(&cache_dir).context("Failed to create registry cache directory")?;
+
+    Ok(cache_dir)
+}
+
+/// Get the path to the cached registry index
+pub fn get_registry_index_cache_path() -> Result<PathBuf> {
+    let cache_dir = get_registry_cache_dir()?;
+    Ok(cache_dir.join("index.bin"))
+}
+
+/// Get the path to the cached registry package set for a given version
+pub fn get_registry_package_set_cache_path(version: &str) -> Result<PathBuf> {
+    let cache_dir = get_registry_cache_dir()?;
+    let key = cache_key(version);
+    Ok(cache_dir.join(format!("package-set-{}.bin", key)))
+}
+
+/// Load registry index from cache
+pub fn load_registry_index_from_cache() -> Result<Option<RegistryIndex>> {
+    let cache_path = get_registry_index_cache_path()?;
+
+    if !cache_path.exists() {
+        return Ok(None);
+    }
+
+    let cached_data = fs::read(&cache_path).context("Failed to read registry index cache file")?;
+
+    let registry_index: RegistryIndex = bincode::deserialize(&cached_data)
+        .context("Failed to deserialize cached registry index")?;
+
+    Ok(Some(registry_index))
+}
+
+/// Save registry index to cache
+pub fn save_registry_index_to_cache(registry_index: &RegistryIndex) -> Result<()> {
+    let cache_path = get_registry_index_cache_path()?;
+
+    let encoded =
+        bincode::serialize(registry_index).context("Failed to serialize registry index")?;
+
+    fs::write(&cache_path, encoded).context("Failed to write registry index cache file")?;
+
+    Ok(())
+}
+
+/// Load registry package set from cache
+pub fn load_registry_package_set_from_cache(version: &str) -> Result<Option<PackageSet>> {
+    let cache_path = get_registry_package_set_cache_path(version)?;
+
+    if !cache_path.exists() {
+        return Ok(None);
+    }
+
+    let cached_data =
+        fs::read(&cache_path).context("Failed to read registry package set cache file")?;
+
+    let package_set: PackageSet = bincode::deserialize(&cached_data)
+        .context("Failed to deserialize cached registry package set")?;
+
+    Ok(Some(package_set))
+}
+
+/// Save registry package set to cache
+pub fn save_registry_package_set_to_cache(version: &str, package_set: &PackageSet) -> Result<()> {
+    let cache_path = get_registry_package_set_cache_path(version)?;
+
+    let encoded =
+        bincode::serialize(package_set).context("Failed to serialize registry package set")?;
+
+    fs::write(&cache_path, encoded).context("Failed to write registry package set cache file")?;
+
+    Ok(())
+}
+
+/// Clear the entire registry cache
+pub fn clear_registry_cache() -> Result<()> {
+    let cache_dir = get_registry_cache_dir()?;
+
+    if cache_dir.exists() {
+        fs::remove_dir_all(&cache_dir).context("Failed to clear registry cache directory")?;
+    }
+
+    Ok(())
+}
+
+/// Clear a specific cached registry package set by version
+pub fn clear_registry_package_set_cache(version: &str) -> Result<()> {
+    let cache_path = get_registry_package_set_cache_path(version)?;
+
+    if cache_path.exists() {
+        fs::remove_file(&cache_path).context(format!(
+            "Failed to remove registry cache for version '{}'",
+            version
+        ))?;
+    }
+
+    Ok(())
+}
+
+/// Clear the registry index cache
+pub fn clear_registry_index_cache() -> Result<()> {
+    let cache_path = get_registry_index_cache_path()?;
+
+    if cache_path.exists() {
+        fs::remove_file(&cache_path).context("Failed to remove registry index cache")?;
     }
 
     Ok(())

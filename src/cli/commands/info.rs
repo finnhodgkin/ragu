@@ -34,6 +34,15 @@ pub fn execute(
             println!("  {} {}", "Version:".dimmed(), package.version.green());
             println!("  {} {}", "Repo:".dimmed(), package.repo);
         }
+        &Package::Registry(package) => {
+            println!(
+                "\n{} {} ({})\n",
+                "📦".bold(),
+                package.name.0.bright_cyan().bold(),
+                "registry package".bright_cyan().bold(),
+            );
+            println!("  {} {}", "Version:".dimmed(), package.version.green());
+        }
     }
 
     println!(

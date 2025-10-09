@@ -73,7 +73,10 @@ pub struct ExtraPackageConfig {
 /// Package set configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageSetConfig {
-    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry: Option<String>,
 }
 
 impl SpagoConfig {
@@ -108,17 +111,30 @@ impl SpagoConfig {
         self.workspace
             .package_set
             .as_ref()
-            .map(|ps| ps.url.as_str())
+            .and_then(|ps| ps.url.as_ref().map(|url| url.as_str()))
+    }
+
+    fn package_set_registry(&self) -> Option<&str> {
+        self.workspace
+            .package_set
+            .as_ref()
+            .and_then(|ps| ps.registry.as_ref().map(|registry| registry.as_str()))
     }
 
     pub fn package_set(&self) -> Result<PackageSet> {
-        let package_set_url = self
-            .package_set_url()
-            .context("Package set URL not found in spago.yaml")?;
-        let package_set_tag = crate::config::extract_tag_from_url(package_set_url)
-            .context("Failed to extract tag from package set URL")?;
+        if let Some(url) = self.package_set_url() {
+            let package_set_tag = crate::config::extract_tag_from_url(url)
+                .context("Failed to extract tag from package set URL")?;
+            return crate::registry::get_package_set(&package_set_tag, false);
+        }
 
-        crate::registry::get_package_set(&package_set_tag, false)
+        if let Some(registry_version) = self.package_set_registry() {
+            return crate::registry::get_package_set_by_registry_version(registry_version, false);
+        }
+
+        Err(anyhow::anyhow!(
+            "No package set URL or registry version configured"
+        ))
     }
 
     pub fn spago_dir(&self) -> PathBuf {

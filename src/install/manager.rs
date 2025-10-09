@@ -185,6 +185,7 @@ impl InstallManager {
 
         match package {
             Package::Local(package) => Ok(None),
+            Package::Registry(package) => Ok(None),
             Package::Remote(package) => {
                 let folder_name = &package.name.0;
                 let package_dir = spago_dir.join(&folder_name);

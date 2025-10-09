@@ -3,11 +3,10 @@ use colored::Colorize;
 
 use crate::registry::PackageQuery;
 
-pub fn execute(query: &PackageQuery, tag: &str) -> Result<()> {
+pub fn execute(query: &PackageQuery) -> Result<()> {
     let stats = query.stats();
 
     println!("\n{} Package Set Statistics\n", "📊".bold());
-    println!("  {} {}", "Tag:".dimmed(), tag.cyan());
     println!();
     println!(
         "  {} {}",

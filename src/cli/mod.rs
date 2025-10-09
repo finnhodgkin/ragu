@@ -9,10 +9,6 @@ pub use commands::execute_command;
 #[command(name = "spago")]
 #[command(version, about, long_about = None)]
 pub struct Cli {
-    /// The package set tag to use (defaults to latest)
-    #[arg(short = 't', long, global = true)]
-    pub tag: Option<String>,
-
     /// Force refresh cache (bypass cached package sets)
     #[arg(short = 'f', long, global = true)]
     pub force_refresh: bool,

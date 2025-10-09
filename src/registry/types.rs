@@ -40,6 +40,20 @@ pub struct LocalPackage {
     pub path: PathBuf,
 }
 
+/// A registry package
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RegistryPackage {
+    pub name: PackageName,
+    pub version: String,
+    pub dependencies: Vec<PackageName>,
+}
+
+/// Registry index containing all packages and their versions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistryIndex(
+    pub std::collections::HashMap<PackageName, std::collections::HashMap<String, RegistryPackage>>,
+);
+
 /// A package in the package set
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Package {
@@ -47,6 +61,8 @@ pub enum Package {
     Remote(PackageSetPackage),
     /// A local filesystem package
     Local(LocalPackage),
+    /// A registry package
+    Registry(RegistryPackage),
 }
 
 impl Package {
@@ -81,6 +97,7 @@ impl Package {
         match self {
             Package::Remote(package) => &package.name,
             Package::Local(package) => &package.name,
+            Package::Registry(package) => &package.name,
         }
     }
 
@@ -88,6 +105,7 @@ impl Package {
         match self {
             Package::Remote(package) => Some(&package.version),
             Package::Local(_) => None,
+            Package::Registry(package) => Some(&package.version),
         }
     }
 
@@ -96,6 +114,7 @@ impl Package {
         match self {
             Package::Remote(package) => &package.dependencies,
             Package::Local(package) => &package.dependencies,
+            Package::Registry(package) => &package.dependencies,
         }
     }
 }

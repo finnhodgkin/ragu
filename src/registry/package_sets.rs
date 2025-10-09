@@ -91,7 +91,7 @@ pub fn get_package_set(tag: &str, force_refresh: bool) -> Result<PackageSet> {
     Ok(package_set)
 }
 
-fn add_extra_packages(
+pub fn add_extra_packages(
     package_set: &mut PackageSet,
     extra_packages: &HashMap<PackageName, ExtraPackageConfig>,
 ) {
