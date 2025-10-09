@@ -3,6 +3,7 @@ use serde_yaml::{self, Value};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use yaml_rust::{Yaml, YamlEmitter, YamlLoader};
 
 use crate::registry::PackageName;
 
@@ -27,8 +28,8 @@ pub fn add_packages_to_config(config_path: &Path, new_packages: &[PackageName]) 
     // Update the dependencies in the YAML value
     update_dependencies_in_value(&mut config, updated_deps)?;
 
-    // Write back to file
-    save_config_as_value(config_path, &config)?;
+    // Write back to file preserving formatting
+    save_config_preserving_formatting(config_path, &config)?;
 
     Ok(())
 }
@@ -53,8 +54,8 @@ pub fn remove_packages_from_config(
     // Update the dependencies in the YAML value
     update_dependencies_in_value(&mut config, updated_deps)?;
 
-    // Write back to file
-    save_config_as_value(config_path, &config)?;
+    // Write back to file preserving formatting
+    save_config_preserving_formatting(config_path, &config)?;
 
     Ok(())
 }
@@ -68,11 +69,74 @@ fn load_config_as_value(path: &Path) -> Result<Value> {
     Ok(config)
 }
 
-/// Save spago.yaml configuration from YAML value
-fn save_config_as_value(path: &Path, config: &Value) -> Result<()> {
-    let content = serde_yaml::to_string(config).context("Failed to serialize spago.yaml")?;
+/// Save spago.yaml configuration preserving original formatting
+fn save_config_preserving_formatting(path: &Path, config: &Value) -> Result<()> {
+    // Read the original file content to preserve formatting
+    let original_content =
+        fs::read_to_string(path).context("Failed to read original spago.yaml")?;
 
-    fs::write(path, content).context("Failed to write spago.yaml")?;
+    // Parse the original YAML with yaml-rust to preserve formatting
+    let docs =
+        YamlLoader::load_from_str(&original_content).context("Failed to parse original YAML")?;
+
+    if docs.is_empty() {
+        return Err(anyhow::anyhow!("No YAML documents found"));
+    }
+
+    let mut yaml_doc = docs[0].clone();
+
+    // Get the new dependencies from the serde_yaml Value
+    let dependencies = config
+        .get("package")
+        .and_then(|p| p.get("dependencies"))
+        .context("Missing dependencies in config")?;
+
+    let deps_array: Vec<String> = match dependencies {
+        Value::Sequence(seq) => seq
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect(),
+        _ => return Err(anyhow::anyhow!("Dependencies must be a list")),
+    };
+
+    // Update the dependencies in the yaml-rust document
+    if let Yaml::Hash(ref mut root_hash) = yaml_doc {
+        if let Some(package_section) = root_hash.get_mut(&Yaml::String("package".to_string())) {
+            if let Yaml::Hash(ref mut package_hash) = package_section {
+                if let Some(deps) = package_hash.get_mut(&Yaml::String("dependencies".to_string()))
+                {
+                    *deps = Yaml::Array(
+                        deps_array
+                            .into_iter()
+                            .map(|dep| Yaml::String(dep))
+                            .collect(),
+                    );
+                }
+            }
+        }
+    }
+
+    // Emit the YAML with preserved formatting
+    let mut out_str = String::new();
+    {
+        let mut emitter = YamlEmitter::new(&mut out_str);
+        emitter.dump(&yaml_doc).context("Failed to emit YAML")?;
+    }
+
+    // Remove the YAML document separator if present
+    if out_str.starts_with("---\n") {
+        out_str = out_str
+            .strip_prefix("---\n")
+            .unwrap_or(&out_str)
+            .to_string();
+    }
+
+    // Ensure the file ends with a newline
+    if !out_str.ends_with('\n') {
+        out_str.push('\n');
+    }
+
+    fs::write(path, out_str).context("Failed to write spago.yaml")?;
 
     Ok(())
 }
