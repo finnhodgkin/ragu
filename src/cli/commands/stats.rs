@@ -54,6 +54,20 @@ pub fn execute(query: &PackageQuery, tag: &str) -> Result<()> {
         );
     }
 
+    // Show packages with most dependents
+    let mut packages_with_dependents: Vec<_> = query.get_packages_with_dependents_count();
+    packages_with_dependents.sort_by(|a, b| b.1.cmp(&a.1));
+
+    println!("\n{} Top packages by dependents:\n", "📊".bold());
+    for (pkg, dependents_count) in packages_with_dependents.iter().take(25) {
+        println!(
+            "  {} {} {}",
+            format!("{:2}", dependents_count).green(),
+            "←".dimmed(),
+            pkg.name().0
+        );
+    }
+
     println!();
     Ok(())
 }

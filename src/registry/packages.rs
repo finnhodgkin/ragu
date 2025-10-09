@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use crate::config::load_config_cwd;
 use crate::registry::{
     types::{Package, PackageName},
     LocalPackage,
@@ -123,6 +124,97 @@ impl<'a> PackageQuery<'a> {
     /// Get packages that depend on a specific package (reverse dependencies)
     pub fn get_dependents(&self, name: &PackageName) -> Vec<&Package> {
         self.filter(|pkg| pkg.dependencies().iter().any(|dep| dep == name))
+    }
+
+    /// Get count of packages that depend on a specific package
+    pub fn get_dependents_count(&self, name: &PackageName) -> usize {
+        self.get_dependents(name).len()
+    }
+
+    /// Get all packages with their dependents count
+    pub fn get_packages_with_dependents_count(&self) -> Vec<(&Package, usize)> {
+        self.package_set
+            .iter()
+            .map(|(_, pkg)| {
+                let dependents_count = self.get_dependents_count(pkg.name());
+                (pkg, dependents_count)
+            })
+            .collect()
+    }
+
+    /// Identify circular dependency chains
+    pub fn check_circular_dependencies() -> Result<()> {
+        let config = load_config_cwd()?;
+        let package_set = config.package_set()?;
+        let query = PackageQuery::new(&package_set);
+
+        let all_local_packages = query.local_packages();
+        let mut found_circular = false;
+
+        for package in all_local_packages {
+            if let Some(circular_chain) = query.find_circular_dependency_chain(&package.name) {
+                found_circular = true;
+                println!("⚠️  Circular dependency detected:");
+                println!("   Chain: {}", circular_chain.join(" → "));
+                println!("   This creates a loop where packages depend on each other in a cycle.");
+            }
+        }
+
+        if !found_circular {
+            println!("🎉 No circular dependencies found");
+        }
+
+        Ok(())
+    }
+
+    /// Find a circular dependency chain starting from a package
+    fn find_circular_dependency_chain(&self, start_package: &PackageName) -> Option<Vec<String>> {
+        let mut visited = HashSet::new();
+        let mut path = Vec::new();
+
+        self.dfs_circular_detection(start_package, &mut visited, &mut path)
+    }
+
+    /// DFS-based circular dependency detection
+    fn dfs_circular_detection(
+        &self,
+        current: &PackageName,
+        visited: &mut HashSet<PackageName>,
+        path: &mut Vec<PackageName>,
+    ) -> Option<Vec<String>> {
+        // If we've already visited this node in the current path, we found a cycle
+        if path.contains(current) {
+            // Find where the cycle starts in the path
+            let cycle_start = path.iter().position(|p| p == current).unwrap();
+            let mut cycle = path[cycle_start..].to_vec();
+            cycle.push(current.clone());
+
+            // Convert to string names for display
+            return Some(cycle.iter().map(|p| p.0.clone()).collect());
+        }
+
+        // If we've already fully explored this node, no cycle through it
+        if visited.contains(current) {
+            return None;
+        }
+
+        // Add current node to path
+        path.push(current.clone());
+
+        // Get dependencies of current package
+        if let Some(pkg) = self.get(current) {
+            for dep in pkg.dependencies() {
+                if let Some(cycle) = self.dfs_circular_detection(dep, visited, path) {
+                    return Some(cycle);
+                }
+            }
+        }
+
+        // Remove current node from path and mark as visited
+        path.pop();
+        visited.insert(current.clone());
+
+        None
     }
 
     /// Find packages by partial name match

@@ -133,6 +133,9 @@ pub enum Command {
     /// List all local package in the workspace
     Workspace,
 
+    /// Check for circular package dependencies in your workspace
+    CircularDeps,
+
     /// Check that workspace dependencies are properly configured
     CheckDeps {
         /// The local package to check

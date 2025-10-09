@@ -21,6 +21,11 @@ pub fn execute_local_packages() -> Result<()> {
     Ok(())
 }
 
+/// Check for circular dependencies in the workspace
+pub fn check_circular_dependencies() -> Result<()> {
+    PackageQuery::check_circular_dependencies()
+}
+
 pub fn check_deps(
     package: Option<String>,
     commands_only: bool,

@@ -140,6 +140,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         }
         Command::Imports => imports::execute(cli.verbose),
         Command::Workspace => workspace::execute_local_packages(),
+        Command::CircularDeps => workspace::check_circular_dependencies(),
         Command::CheckDeps {
             package,
             commands_only,
