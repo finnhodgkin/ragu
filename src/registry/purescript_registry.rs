@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tempfile;
 use walkdir::WalkDir;
 
@@ -78,8 +78,6 @@ fn fetch_registry_package_set(registry_version: &str) -> Result<PackageSet> {
 
     Ok(package_set)
 }
-
-const REGISTRY_REPO_URL: &str = "https://github.com/purescript/registry/blob/main/package-sets/";
 
 fn fetch_registry_package_set_from_github(registry_version: &str) -> Result<RegistryPackageSet> {
     let url = format!("https://raw.githubusercontent.com/purescript/registry/refs/heads/main/package-sets/{}.json", registry_version);
@@ -186,11 +184,5 @@ struct RegistryPackageSet(HashMap<PackageName, String>);
 impl RegistryIndex {
     fn get_package(&self, name: &PackageName, version: &str) -> Option<&RegistryPackage> {
         self.0.get(name).and_then(|versions| versions.get(version))
-    }
-
-    fn get_versions(&self, name: &PackageName) -> Option<Vec<&str>> {
-        self.0
-            .get(name)
-            .map(|versions| versions.keys().map(|v| v.as_str()).collect())
     }
 }

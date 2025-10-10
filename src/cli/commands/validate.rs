@@ -1,10 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
 
-use crate::config::{extract_tag_from_url, load_config, validate_config, validate_transitive_deps};
-use crate::registry::{get_package_set, PackageQuery};
+use crate::config::{load_config, validate_config, validate_transitive_deps};
+use crate::registry::PackageQuery;
 
-pub fn execute(path: Option<String>, force_refresh: bool, verbose: bool) -> Result<()> {
+pub fn execute(path: Option<String>, verbose: bool) -> Result<()> {
     let config_path = path.as_deref().unwrap_or("spago.yaml");
 
     if verbose {
@@ -23,28 +23,7 @@ pub fn execute(path: Option<String>, force_refresh: bool, verbose: bool) -> Resu
         }
     }
 
-    // Determine package set tag
-    let tag = if let Some(url) = config.package_set_url() {
-        if verbose {
-            println!("\nPackage set URL: {}", url.dimmed());
-        }
-        extract_tag_from_url(url).context("Could not extract tag from package set URL")?
-    } else {
-        if verbose {
-            println!("\nNo package set URL specified, using latest");
-        }
-        use crate::registry::list_available_tags;
-        let tags = list_available_tags()?;
-        tags.first().cloned().context("No tags available")?
-    };
-
-    if verbose {
-        println!("Package set tag: {}", tag.cyan());
-        println!("\nLoading package set...");
-    }
-
-    // Load package set (uses cache - blazingly fast!)
-    let package_set = get_package_set(&tag, force_refresh)?;
+    let package_set = config.package_set()?;
     let query = PackageQuery::new(&package_set);
 
     if verbose {

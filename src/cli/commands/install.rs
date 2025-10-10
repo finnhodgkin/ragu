@@ -54,7 +54,7 @@ async fn install_all_from_config(verbose: bool) -> Result<()> {
                         "  {} {} ({})",
                         "→".cyan(),
                         pkg.name().0.bright_cyan(),
-                        pkg.version().unwrap_or(&"local".to_string()).dimmed()
+                        pkg.version().dimmed()
                     );
                 }
             }

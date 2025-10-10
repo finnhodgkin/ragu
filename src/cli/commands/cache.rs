@@ -4,7 +4,7 @@ use std::fs;
 
 use crate::config::load_config_cwd;
 use crate::install::cache::GlobalPackageCache;
-use crate::registry::{clear_cache, clear_cache_for_tag, clear_tags_cache, get_cache_dir};
+use crate::registry::{clear_cache, get_cache_dir};
 
 pub fn info() -> Result<()> {
     let cache_dir = get_cache_dir()?;
@@ -24,22 +24,14 @@ pub fn info() -> Result<()> {
     // Count cached package sets
     let entries = fs::read_dir(&cache_dir)?;
     let mut total_size = 0u64;
-    let mut file_count = 0;
 
     for entry in entries.flatten() {
         if let Ok(metadata) = entry.metadata() {
             if metadata.is_file() {
                 total_size += metadata.len();
-                file_count += 1;
             }
         }
     }
-
-    println!(
-        "  {} {}",
-        "Cached package sets:".dimmed(),
-        file_count.to_string().green()
-    );
 
     // Check for cached packages
     let packages_dir = cache_dir.join("packages");
@@ -88,7 +80,6 @@ pub fn clear(also_clear_output: bool) -> Result<()> {
 
     // Clear package set cache
     clear_cache()?;
-    clear_tags_cache()?;
 
     // Clear global package cache
     let package_cache = GlobalPackageCache::new()?;
@@ -104,14 +95,6 @@ pub fn clear(also_clear_output: bool) -> Result<()> {
     }
 
     println!("Cache cleared (package sets and packages)");
-    println!();
-    Ok(())
-}
-
-pub fn remove(tag: &str) -> Result<()> {
-    println!("\nRemoving cache for tag: {}", tag);
-    clear_cache_for_tag(tag)?;
-    println!("Cache removed for tag: {}", tag);
     println!();
     Ok(())
 }

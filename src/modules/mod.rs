@@ -16,6 +16,7 @@ pub struct ModuleInfo {
     /// The module name (e.g., "Data.Maybe")
     pub name: String,
     /// The file path where this module is defined
+    #[allow(dead_code)]
     pub file_path: PathBuf,
     /// The package this module belongs to
     pub package_name: String,
@@ -143,6 +144,7 @@ pub fn find_module_by_name<'a>(
 }
 
 /// Get all module names from a specific package
+#[allow(dead_code)]
 pub fn get_modules_from_package<'a>(
     modules: &'a [ModuleInfo],
     package_name: &str,

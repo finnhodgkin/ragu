@@ -165,10 +165,4 @@ pub enum CacheAction {
         #[arg(short = 'a', long)]
         all: bool,
     },
-
-    /// Clear cache for a specific tag
-    Remove {
-        /// Tag to remove from cache
-        tag: String,
-    },
 }

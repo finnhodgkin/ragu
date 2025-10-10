@@ -12,8 +12,10 @@ pub struct ImportInfo {
     /// The module name being imported
     pub module_name: String,
     /// The file where this import was found
+    #[allow(dead_code)]
     pub file_path: String,
     /// The line number where the import was found
+    #[allow(dead_code)]
     pub line_number: usize,
 }
 

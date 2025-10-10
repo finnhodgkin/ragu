@@ -25,7 +25,6 @@ pub struct InstallResult {
 #[derive(Debug, Clone)]
 pub enum InstalledPackage {
     Git(PackageInfo),
-    Local(LocalPackageInfo),
     Registry(RegistryPackageInfo),
 }
 
@@ -39,7 +38,6 @@ impl InstalledPackage {
     pub fn name(&self) -> &PackageName {
         match self {
             InstalledPackage::Git(package) => &package.name,
-            InstalledPackage::Local(package) => &package.name,
             InstalledPackage::Registry(package) => &package.name,
         }
     }
@@ -47,24 +45,16 @@ impl InstalledPackage {
     pub fn type_str(&self) -> &str {
         match self {
             InstalledPackage::Git(_) => "git",
-            InstalledPackage::Local(_) => "local",
             InstalledPackage::Registry(_) => "registry",
         }
     }
 
-    pub fn version(&self) -> Option<&String> {
+    pub fn version(&self) -> &str {
         match self {
-            InstalledPackage::Git(package) => Some(&package.version),
-            InstalledPackage::Local(_) => None,
-            InstalledPackage::Registry(package) => Some(&package.version),
+            InstalledPackage::Git(package) => &package.version,
+            InstalledPackage::Registry(package) => &package.version,
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct LocalPackageInfo {
-    pub name: PackageName,
-    pub path: PathBuf,
 }
 
 impl InstallResult {
@@ -243,11 +233,9 @@ fn install_registry_package(
     if global_cache.is_cached(&package.name, &package.version)? {
         // Copy from cache
         global_cache.copy_from_cache(&package.name, &package.version, &package_dir)?;
-        return Ok(Some(InstalledPackage::Git(PackageInfo {
+        return Ok(Some(InstalledPackage::Registry(RegistryPackageInfo {
             name: package.name.clone(),
             version: package.version.clone(),
-            repo_url: "Registry package".to_string(),
-            local_path: package_dir,
         })));
     }
 
@@ -359,7 +347,6 @@ fn install_git_package(
         return Ok(Some(InstalledPackage::Git(PackageInfo {
             name: package.name.clone(),
             version: package.version.clone(),
-            repo_url: package.repo.clone(),
             local_path: package_dir,
         })));
     }

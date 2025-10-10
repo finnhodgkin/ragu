@@ -14,11 +14,29 @@ struct CachedTags {
     fetched_at: DateTime<Utc>,
 }
 
+/// Cached registry versions with timestamp
+#[derive(Debug, Serialize, Deserialize)]
+struct CachedRegistryVersions {
+    versions: Vec<String>,
+    fetched_at: DateTime<Utc>,
+}
+
 /// Default TTL for tag cache (24 hours)
 const TAG_CACHE_TTL_HOURS: i64 = 24;
 
 /// Get the cache directory for spago
 pub fn get_cache_dir() -> Result<PathBuf> {
+    let cache_dir = dirs::cache_dir()
+        .context("Failed to get system cache directory")?
+        .join("spago-rust");
+
+    fs::create_dir_all(&cache_dir).context("Failed to create cache directory")?;
+
+    Ok(cache_dir)
+}
+
+/// Get the cache directory for the package sets
+pub fn get_package_set_cache_dir() -> Result<PathBuf> {
     let cache_dir = dirs::cache_dir()
         .context("Failed to get system cache directory")?
         .join("spago-rust")
@@ -50,7 +68,7 @@ fn cache_key(tag: &str) -> String {
 
 /// Get the path to the cached package set for a given tag
 pub fn get_cache_path(tag: &str) -> Result<PathBuf> {
-    let cache_dir = get_cache_dir()?;
+    let cache_dir = get_package_set_cache_dir()?;
     let key = cache_key(tag);
     Ok(cache_dir.join(format!("{}.bin", key)))
 }
@@ -111,6 +129,12 @@ fn get_tags_cache_path() -> Result<PathBuf> {
     Ok(cache_dir.join("tags.json"))
 }
 
+/// Get path to the registry versions cache file
+fn get_registry_versions_cache_path() -> Result<PathBuf> {
+    let cache_dir = get_metadata_cache_dir()?;
+    Ok(cache_dir.join("registry-versions.json"))
+}
+
 /// Load cached tags if they exist and are fresh
 pub fn load_cached_tags(ttl_hours: Option<i64>) -> Result<Option<Vec<String>>> {
     let cache_path = get_tags_cache_path()?;
@@ -156,13 +180,49 @@ pub fn save_cached_tags(tags: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Clear the tags cache
-pub fn clear_tags_cache() -> Result<()> {
-    let cache_path = get_tags_cache_path()?;
+/// Load cached registry versions if they exist and are fresh
+pub fn load_cached_registry_versions(ttl_hours: Option<i64>) -> Result<Option<Vec<String>>> {
+    let cache_path = get_registry_versions_cache_path()?;
 
-    if cache_path.exists() {
-        fs::remove_file(&cache_path).context("Failed to remove tags cache")?;
+    if !cache_path.exists() {
+        return Ok(None);
     }
+
+    let cached_data =
+        fs::read_to_string(&cache_path).context("Failed to read registry versions cache file")?;
+
+    let cached: CachedRegistryVersions = serde_json::from_str(&cached_data)
+        .context("Failed to deserialize cached registry versions")?;
+
+    // Check if cache is still fresh
+    let ttl = ttl_hours.unwrap_or(TAG_CACHE_TTL_HOURS);
+    let age = Utc::now().signed_duration_since(cached.fetched_at);
+    let max_age = Duration::hours(ttl);
+
+    if age < max_age {
+        // Cache is fresh - return silently
+        // Note: We removed the "Loaded registry versions from cache" message
+        // to keep output minimal by default
+        Ok(Some(cached.versions))
+    } else {
+        // Cache is stale
+        Ok(None)
+    }
+}
+
+/// Save registry versions to cache with current timestamp
+pub fn save_cached_registry_versions(versions: &[String]) -> Result<()> {
+    let cache_path = get_registry_versions_cache_path()?;
+
+    let cached = CachedRegistryVersions {
+        versions: versions.to_vec(),
+        fetched_at: Utc::now(),
+    };
+
+    let json = serde_json::to_string_pretty(&cached)
+        .context("Failed to serialize registry versions cache")?;
+
+    fs::write(&cache_path, json).context("Failed to write registry versions cache file")?;
 
     Ok(())
 }
@@ -249,17 +309,6 @@ pub fn save_registry_package_set_to_cache(version: &str, package_set: &PackageSe
     Ok(())
 }
 
-/// Clear the entire registry cache
-pub fn clear_registry_cache() -> Result<()> {
-    let cache_dir = get_registry_cache_dir()?;
-
-    if cache_dir.exists() {
-        fs::remove_dir_all(&cache_dir).context("Failed to clear registry cache directory")?;
-    }
-
-    Ok(())
-}
-
 /// Clear a specific cached registry package set by version
 pub fn clear_registry_package_set_cache(version: &str) -> Result<()> {
     let cache_path = get_registry_package_set_cache_path(version)?;
@@ -269,17 +318,6 @@ pub fn clear_registry_package_set_cache(version: &str) -> Result<()> {
             "Failed to remove registry cache for version '{}'",
             version
         ))?;
-    }
-
-    Ok(())
-}
-
-/// Clear the registry index cache
-pub fn clear_registry_index_cache() -> Result<()> {
-    let cache_path = get_registry_index_cache_path()?;
-
-    if cache_path.exists() {
-        fs::remove_file(&cache_path).context("Failed to remove registry index cache")?;
     }
 
     Ok(())

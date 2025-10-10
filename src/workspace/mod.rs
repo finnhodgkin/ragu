@@ -5,7 +5,7 @@ use anyhow::Result;
 
 use crate::config::{add_packages_to_config, load_config_cwd, remove_packages_from_config};
 use crate::imports::extract_imports_from_sources;
-use crate::modules::{discover_all_modules, find_module_by_name, ModuleInfo};
+use crate::modules::discover_all_modules;
 use crate::registry::{LocalPackage, PackageName, PackageQuery};
 
 pub fn execute_local_packages() -> Result<()> {

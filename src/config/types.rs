@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::registry::{PackageName, PackageQuery, PackageSet};
+use crate::registry::{PackageName, PackageSet};
 
 /// Complete spago.yaml configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

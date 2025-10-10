@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 use crate::config::{load_config_cwd, ExtraPackageConfig};
+use crate::registry::cache::{load_cached_registry_versions, save_cached_registry_versions};
 use crate::registry::types::{PackageInSet, PackageName, PackageSetPackage};
 use crate::registry::{add_workspace_packages, clear_cache_for_tag, LocalPackage, Package};
 
@@ -173,31 +174,6 @@ fn fetch_tags_from_github() -> Result<Vec<String>> {
     Ok(tag_names)
 }
 
-/// List all available tags from the package-sets repository
-///
-/// Uses cached tags if available and fresh (< 24 hours old).
-/// Falls back to GitHub API if cache is stale or missing.
-///
-/// # Notes
-/// - Uses 24-hour cache to avoid excessive API calls
-/// - GitHub API has rate limits (60 requests/hour for unauthenticated requests)
-/// - Returns up to 100 most recent tags (GitHub API pagination limit)
-/// - Tags are returned in chronological order (newest first)
-pub fn list_available_tags() -> Result<Vec<String>> {
-    // Try to load from cache first
-    if let Some(cached_tags) = load_cached_tags(None)? {
-        return Ok(cached_tags);
-    }
-
-    // Cache miss or stale - fetch from GitHub
-    let tags = fetch_tags_from_github()?;
-
-    // Save to cache for next time
-    save_cached_tags(&tags)?;
-
-    Ok(tags)
-}
-
 /// List available tags with custom TTL or force refresh
 ///
 /// # Arguments
@@ -223,14 +199,60 @@ pub fn list_available_tags_with_options(
     Ok(tags)
 }
 
-/// Get the latest (most recent) package set tag
-///
-/// This is a convenience function that fetches available tags and returns the first one.
-/// Useful when you don't need to list all tags and just want the latest version.
-pub fn get_latest_tag() -> Result<String> {
-    let tags = list_available_tags()?;
+/// List available registry versions with custom TTL or force refresh
+pub fn list_available_registry_versions_with_options(
+    force_refresh: bool,
+    ttl_hours: Option<i64>,
+) -> Result<Vec<String>> {
+    if !force_refresh {
+        // Try to load from cache with custom TTL
+        if let Some(cached_tags) = load_cached_registry_versions(ttl_hours)? {
+            return Ok(cached_tags);
+        }
+    }
 
-    tags.first()
-        .cloned()
-        .context("No tags available in the package-sets repository")
+    // Clone registry repo to temp dir
+    let temp_dir = tempfile::tempdir()?;
+    git2::Repository::clone(
+        "https://github.com/purescript/registry.git",
+        temp_dir.path(),
+    )
+    .context("Failed to clone the registry repository to check for new registry versions")?;
+
+    // Look for package set files in package-sets directory
+    let package_sets_dir = temp_dir.path().join("package-sets");
+    let mut versions = Vec::new();
+
+    for entry in std::fs::read_dir(package_sets_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json") {
+            if let Some(version) = path.file_stem().and_then(|s| s.to_str()) {
+                versions.push(version.to_string());
+            }
+        }
+    }
+
+    // Sort versions in descending order using semantic versioning comparison
+    versions.sort_by(|a, b| {
+        // Split version strings into numeric components
+        let a_parts: Vec<u32> = a.split('.').filter_map(|s| s.parse().ok()).collect();
+        let b_parts: Vec<u32> = b.split('.').filter_map(|s| s.parse().ok()).collect();
+
+        // Compare components from most significant to least significant
+        // This will compare all parts (major.minor.patch)
+        b_parts
+            .iter()
+            .zip(a_parts.iter())
+            .find(|(b_num, a_num)| b_num != a_num)
+            .map(|(b_num, a_num)| a_num.cmp(b_num))
+            .unwrap_or_else(|| b_parts.len().cmp(&a_parts.len()))
+    });
+
+    versions.reverse();
+
+    // Save to cache
+    save_cached_registry_versions(&versions)?;
+
+    Ok(versions)
 }

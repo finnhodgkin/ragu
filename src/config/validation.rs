@@ -18,11 +18,7 @@ pub enum ValidationError {
         package: PackageName,
         context: DependencyContext,
     },
-    CircularDependency {
-        cycle: Vec<String>,
-    },
     EmptyName,
-    InvalidPackageSetUrl(String),
 }
 
 /// Context where a dependency is declared
@@ -153,14 +149,8 @@ impl std::fmt::Display for ValidationError {
                     package.0, ctx
                 )
             }
-            ValidationError::CircularDependency { cycle } => {
-                write!(f, "Circular dependency detected: {}", cycle.join(" -> "))
-            }
             ValidationError::EmptyName => {
                 write!(f, "Package name cannot be empty")
-            }
-            ValidationError::InvalidPackageSetUrl(url) => {
-                write!(f, "Invalid package set URL: {}", url)
             }
         }
     }

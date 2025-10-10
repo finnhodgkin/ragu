@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 use crate::config::load_config_cwd;
 use crate::registry::{
@@ -28,11 +28,6 @@ impl<'a> PackageQuery<'a> {
     /// Check if a package exists in the set
     pub fn exists(&self, name: &PackageName) -> bool {
         self.package_set.contains_key(name)
-    }
-
-    /// Get multiple packages by name
-    pub fn get_many(&self, names: &[&PackageName]) -> Vec<Option<&Package>> {
-        names.iter().map(|name| self.get(name)).collect()
     }
 
     /// Get all packages that match a predicate
@@ -261,27 +256,6 @@ impl<'a> PackageQuery<'a> {
             packages_with_no_deps: no_deps_count,
         }
     }
-
-    /// Validate that all dependencies in the package set actually exist
-    pub fn validate(&self) -> ValidationResult {
-        let mut missing_deps: HashMap<PackageName, Vec<PackageName>> = HashMap::new();
-
-        for (pkg_name, pkg) in self.package_set.iter() {
-            for dep_name in pkg.dependencies() {
-                if !self.exists(dep_name) {
-                    missing_deps
-                        .entry(pkg_name.clone())
-                        .or_insert_with(Vec::new)
-                        .push(dep_name.clone());
-                }
-            }
-        }
-
-        ValidationResult {
-            is_valid: missing_deps.is_empty(),
-            missing_dependencies: missing_deps,
-        }
-    }
 }
 
 /// Statistics about a package set
@@ -295,16 +269,10 @@ pub struct PackageSetStats {
     pub packages_with_no_deps: usize,
 }
 
-/// Result of package set validation
-#[derive(Debug, Clone)]
-pub struct ValidationResult {
-    pub is_valid: bool,
-    /// Map of package name to list of missing dependencies
-    pub missing_dependencies: HashMap<PackageName, Vec<PackageName>>,
-}
-
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::registry::types::{Package, PackageSetPackage};
 

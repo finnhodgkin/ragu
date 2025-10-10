@@ -9,7 +9,6 @@ use crate::registry::{PackageName, PackageSetPackage};
 pub struct PackageInfo {
     pub name: PackageName,
     pub version: String,
-    pub repo_url: String,
     pub local_path: std::path::PathBuf,
 }
 
@@ -64,7 +63,6 @@ pub fn fetch_package(package: &PackageSetPackage, spago_dir: &Path) -> Result<Pa
     Ok(PackageInfo {
         name: package_name,
         version: package.version.clone(),
-        repo_url: package.repo.clone(),
         local_path: package_dir,
     })
 }

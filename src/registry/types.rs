@@ -66,10 +66,12 @@ pub enum Package {
 }
 
 impl Package {
+    #[allow(dead_code)]
     pub fn new(package: PackageSetPackage) -> Self {
         Package::Remote(package)
     }
 
+    #[allow(dead_code)]
     pub fn new_local(
         name: PackageName,
         path: PathBuf,
@@ -85,11 +87,6 @@ impl Package {
     /// Get the number of direct dependencies
     pub fn dep_count(&self) -> usize {
         self.dependencies().len()
-    }
-
-    /// Check if this package depends on another package
-    pub fn depends_on(&self, pkg_name: &PackageName) -> bool {
-        self.dependencies().iter().any(|d| d == pkg_name)
     }
 
     /// Get the package name from its repository URL

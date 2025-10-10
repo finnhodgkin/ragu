@@ -11,11 +11,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 
 use crate::cli::{CacheAction, Cli, Command};
-use crate::config::load_config_cwd;
-use crate::registry::{
-    get_package_set, list_available_tags, list_available_tags_with_options, PackageName,
-    PackageQuery,
-};
+use crate::registry::{PackageName, PackageQuery};
 use crate::{imports, workspace};
 
 /// Execute the CLI command
@@ -77,7 +73,6 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         Command::Cache { action } => match action {
             CacheAction::Info => cache::info(),
             CacheAction::Clear { all } => cache::clear(all),
-            CacheAction::Remove { tag } => cache::remove(&tag),
         },
         Command::Stats => {
             // Load spago.yaml configuration
@@ -92,7 +87,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             println!("  Name: {:?}", name);
             Ok(())
         }
-        Command::Validate { path } => validate::execute(path, cli.force_refresh, cli.verbose),
+        Command::Validate { path } => validate::execute(path, cli.verbose),
         Command::Modules {
             group_by_package,
             package,

@@ -3,9 +3,7 @@ pub mod cleanup;
 mod git;
 mod manager;
 
-pub use cache::GlobalPackageCache;
 pub use cleanup::cleanup_unused_packages;
-pub use git::{fetch_package, PackageInfo as GitPackageInfo};
 pub use manager::{InstallManager, InstallResult};
 
 use anyhow::Result;
