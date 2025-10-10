@@ -12,7 +12,7 @@ use colored::Colorize;
 
 use crate::cli::{CacheAction, Cli, Command};
 use crate::registry::{PackageName, PackageQuery};
-use crate::{imports, workspace};
+use crate::{imports, init, test, workspace};
 
 /// Execute the CLI command
 pub fn execute_command(cli: Cli) -> Result<()> {
@@ -69,6 +69,9 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         }
         Command::Build { watch, clear } => tokio::runtime::Runtime::new()?
             .block_on(crate::build::execute(watch, clear, cli.verbose)),
+        Command::Test { quick_test } => {
+            tokio::runtime::Runtime::new()?.block_on(test::execute(quick_test, cli.verbose))
+        }
         Command::Sources => crate::sources::execute_sources(cli.verbose),
         Command::Cache { action } => match action {
             CacheAction::Info => cache::info(),
@@ -82,11 +85,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             let query = PackageQuery::new(&package_set);
             stats::execute(&query)
         }
-        Command::Init { name } => {
-            println!("{} Init command not yet implemented", "⚠".yellow().bold());
-            println!("  Name: {:?}", name);
-            Ok(())
-        }
+        Command::Init { name } => init::execute(name),
         Command::Validate => validate::execute(cli.verbose),
         Command::Modules {
             group_by_package,

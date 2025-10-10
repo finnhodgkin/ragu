@@ -80,7 +80,10 @@ pub fn generate_sources(
     let query = PackageQuery::new(&package_set);
 
     let direct_package_dependencies: Vec<PackageName> = if config.is_workspace_root() || all {
-        query.all_workspace_dependencies()
+        let mut direct_deps: Vec<PackageName> =
+            config.all_dependencies().into_iter().cloned().collect();
+        direct_deps.extend(query.all_workspace_dependencies());
+        direct_deps
     } else {
         config.package_dependencies().into_iter().cloned().collect()
     };

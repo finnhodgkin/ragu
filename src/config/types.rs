@@ -36,7 +36,8 @@ pub struct PackageConfig {
 /// Test configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestConfig {
-    pub main: PackageName,
+    /// The entry point for tests (purescript module name)
+    pub main: String,
     #[serde(default)]
     pub dependencies: Vec<PackageName>,
 }
@@ -160,7 +161,7 @@ mod tests {
                 name: PackageName::new("test-package"),
                 dependencies: vec![PackageName::new("prelude"), PackageName::new("effect")],
                 test: Some(TestConfig {
-                    main: PackageName::new("Test.Main"),
+                    main: "Test.Main".to_string(),
                     dependencies: vec![PackageName::new("console"), PackageName::new("effect")],
                 }),
             },

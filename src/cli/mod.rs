@@ -85,6 +85,13 @@ pub enum Command {
         clear: bool,
     },
 
+    /// Test the project
+    Test {
+        /// Quick test (skip compilation)
+        #[arg(short = 'q', long)]
+        quick_test: bool,
+    },
+
     /// Output source file globs for piping to other tools
     Sources,
 
@@ -100,7 +107,6 @@ pub enum Command {
     /// Initialize a new purescript project in the CWD
     Init {
         /// Project name
-        #[arg(short = 'n', long)]
         name: String,
     },
 

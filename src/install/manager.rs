@@ -82,6 +82,7 @@ impl InstallManager {
         &self,
         package_set: &PackageSet,
         config: &SpagoConfig,
+        include_test_deps: bool,
     ) -> Result<InstallResult> {
         // Ensure .spago directory exists
         fs::create_dir_all(&self.spago_dir).context("Failed to create .spago directory")?;
@@ -90,11 +91,20 @@ impl InstallManager {
         let mut all_packages = HashSet::new();
         let mut processed = HashSet::new();
 
-        let direct_package_dependencies: Vec<PackageName> = if config.is_workspace_root() {
-            query.all_workspace_dependencies()
+        let mut direct_package_dependencies: Vec<PackageName> = if config.is_workspace_root() {
+            let mut direct_deps: Vec<PackageName> =
+                config.package_dependencies().into_iter().cloned().collect();
+            direct_deps.extend(query.all_workspace_dependencies());
+            direct_deps
         } else {
             config.package_dependencies().into_iter().cloned().collect()
         };
+
+        if include_test_deps {
+            let test_deps: Vec<PackageName> =
+                config.test_dependencies().into_iter().cloned().collect();
+            direct_package_dependencies.extend(test_deps);
+        }
 
         // Collect all packages to install (including dependencies)
         for package_name in direct_package_dependencies {
@@ -163,6 +173,9 @@ impl InstallManager {
                 errors.join(", ").red()
             ));
         }
+
+        print!("\r\x1B[K"); // Clear current line
+        std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
 
         Ok(InstallResult { installed, errors })
     }

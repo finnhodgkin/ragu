@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::io::BufRead;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{self, Command};
 
 /// Execute the purs compiler with streaming output
 pub fn execute_compiler(sources: &[String], output_dir: &PathBuf, verbose: bool) -> Result<()> {
@@ -67,10 +67,9 @@ pub fn execute_compiler(sources: &[String], output_dir: &PathBuf, verbose: bool)
     let status = child.wait().context("Failed to wait for purs compiler")?;
 
     if !status.success() {
-        return Err(anyhow::anyhow!("Compilation failed"));
+        eprintln!("❌ Compilation failed");
+        process::exit(1);
     }
-
-    println!("{} Compilation successful", "✓".green());
     if verbose {
         println!("  Compiled {} source files", sources.len());
     }

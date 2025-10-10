@@ -1,4 +1,4 @@
-mod compiler;
+pub mod compiler;
 
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -19,7 +19,7 @@ pub async fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
 
     let package_set = config.package_set()?;
 
-    install_all_dependencies(&config, &package_set).await?;
+    install_all_dependencies(&config, &package_set, false).await?;
 
     // Generate source globs for dependencies
     let sources = crate::sources::generate_sources(&config, Some(package_set), false, verbose)?;
@@ -46,6 +46,8 @@ pub async fn execute(watch: bool, clear: bool, verbose: bool) -> Result<()> {
 
     // Execute the purs compiler
     compiler::execute_compiler(&all_sources, &config.output_dir(), verbose)?;
+
+    println!("{} Build successful", "✓".green());
 
     Ok(())
 }
