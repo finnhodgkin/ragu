@@ -11,6 +11,7 @@ use std::path::Path;
 use std::{fs, path::PathBuf};
 
 use crate::config::types::{JustPackageConfig, JustWorkspaceConfig};
+use crate::registry::PackageName;
 
 /// Load and parse a spago.yaml file
 pub fn load_config(path: impl AsRef<Path>) -> Result<SpagoConfig> {
@@ -19,7 +20,13 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<SpagoConfig> {
         .context(format!("Failed to read config file: {}", path.display()))?;
 
     let package_config: PackageConfig = serde_yaml::from_str::<JustPackageConfig>(&contents)
-        .context("Failed to parse package section of spago.yaml")?
+        .unwrap_or(JustPackageConfig {
+            package: PackageConfig {
+                name: PackageName::new("workspace_root"),
+                dependencies: vec![],
+                test: None,
+            },
+        })
         .package;
 
     let workspace_config: Option<WorkspaceConfig> =
