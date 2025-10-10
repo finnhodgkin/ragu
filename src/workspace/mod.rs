@@ -68,7 +68,7 @@ pub fn fetch_workspace_dependency_stats() -> Result<DependencyStats> {
     let all_local_packages = query.local_packages();
 
     let workspace_root_config =
-        crate::config::load_config(Path::join(&config.workspace_root, "spago.yaml"))?;
+        crate::config::load_config(Path::join(&config.workspace_root, "spago.yaml"), false)?;
 
     // Use current project config for both sources and workspace sources
     // This ensures we're looking in the correct .spago directory (current project's)

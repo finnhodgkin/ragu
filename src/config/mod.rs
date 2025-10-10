@@ -14,7 +14,7 @@ use crate::config::types::{JustPackageConfig, JustWorkspaceConfig};
 use crate::registry::PackageName;
 
 /// Load and parse a spago.yaml file
-pub fn load_config(path: impl AsRef<Path>) -> Result<SpagoConfig> {
+pub fn load_config(path: impl AsRef<Path>, ignore_when_workspace: bool) -> Result<SpagoConfig> {
     let path = path.as_ref();
     let contents = fs::read_to_string(path)
         .context(format!("Failed to read config file: {}", path.display()))?;
@@ -33,6 +33,12 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<SpagoConfig> {
         serde_yaml::from_str::<JustWorkspaceConfig>(&contents)
             .context("Failed to parse workspace section of spago.yaml")?
             .workspace;
+
+    if ignore_when_workspace {
+        return Err(anyhow::anyhow!(
+            "Workspace section found in spago.yaml, but ignore_when_workspace is true"
+        ));
+    }
 
     let cwd = path.parent().context("Failed to get current directory")?;
     Ok(match workspace_config {
@@ -59,7 +65,7 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<SpagoConfig> {
 
 /// Load config from the current directory
 pub fn load_config_cwd() -> Result<SpagoConfig> {
-    let config = load_config("spago.yaml")?;
+    let config = load_config("spago.yaml", false)?;
 
     Ok(config)
 }

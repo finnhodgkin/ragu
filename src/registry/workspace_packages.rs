@@ -32,7 +32,7 @@ pub fn add_workspace_packages(package_set: &mut PackageSet, workspace_root: &Pat
             && entry.file_name() == "spago.yaml"
             && entry.path() != root_spago_yaml
         {
-            if let Ok(config) = crate::config::load_config(entry.path()) {
+            if let Ok(config) = crate::config::load_config(entry.path(), true) {
                 let path = entry.path().parent().unwrap().to_path_buf();
                 // Add the package to our set
                 package_set.insert(
@@ -40,6 +40,11 @@ pub fn add_workspace_packages(package_set: &mut PackageSet, workspace_root: &Pat
                     Package::Local(LocalPackage {
                         name: config.package.name,
                         dependencies: config.package.dependencies,
+                        test_dependencies: config
+                            .package
+                            .test
+                            .map(|t| t.dependencies)
+                            .unwrap_or_default(),
                         path,
                     }),
                 );

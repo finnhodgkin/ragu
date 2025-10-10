@@ -63,4 +63,4 @@ pub async fn execute(skip_compilation: bool, verbose: bool) -> Result<()> {
     Ok(())
 }
 
-const TEST_SOURCES: &str = "./test/**/*.purs";
+pub const TEST_SOURCES: &str = "./test/**/*.purs";

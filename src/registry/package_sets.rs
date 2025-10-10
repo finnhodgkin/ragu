@@ -127,6 +127,7 @@ pub fn add_extra_packages(
                             .iter()
                             .map(|d| PackageName::new(d))
                             .collect(),
+                        test_dependencies: vec![],
                         path: PathBuf::from(path.clone()),
                     }),
                 );

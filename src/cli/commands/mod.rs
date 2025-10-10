@@ -67,8 +67,8 @@ pub fn execute_command(cli: Cli) -> Result<()> {
                 cli.verbose,
             ))
         }
-        Command::Build { watch, clear } => tokio::runtime::Runtime::new()?
-            .block_on(crate::build::execute(watch, clear, cli.verbose)),
+        Command::Build { watch, clear, test } => tokio::runtime::Runtime::new()?
+            .block_on(crate::build::execute(watch, clear, test, cli.verbose)),
         Command::Test { quick_test } => {
             tokio::runtime::Runtime::new()?.block_on(test::execute(quick_test, cli.verbose))
         }
@@ -88,7 +88,10 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             let query = PackageQuery::new(&package_set);
             stats::execute(&query)
         }
-        Command::Init { name } => init::execute(name),
+        Command::Init {
+            name,
+            nested_package,
+        } => init::execute(name, nested_package),
         Command::Validate => validate::execute(cli.verbose),
         Command::Modules {
             group_by_package,

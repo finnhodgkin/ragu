@@ -37,6 +37,7 @@ pub struct PackageSetPackage {
 pub struct LocalPackage {
     pub name: PackageName,
     pub dependencies: Vec<PackageName>,
+    pub test_dependencies: Vec<PackageName>,
     pub path: PathBuf,
 }
 
@@ -75,11 +76,13 @@ impl Package {
     pub fn new_local(
         name: PackageName,
         path: PathBuf,
+        test_dependencies: Option<Vec<PackageName>>,
         dependencies: Option<Vec<PackageName>>,
     ) -> Self {
         Package::Local(LocalPackage {
             name,
             path,
+            test_dependencies: test_dependencies.unwrap_or_default(),
             dependencies: dependencies.unwrap_or_default(),
         })
     }

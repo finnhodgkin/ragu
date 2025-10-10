@@ -91,6 +91,8 @@ impl InstallManager {
         let mut all_packages = HashSet::new();
         let mut processed = HashSet::new();
 
+        // Get the direct package dependencies, or if running from root,
+        // get the dependencies of all workspace packages, as well as the root.
         let mut direct_package_dependencies: Vec<PackageName> = if config.is_workspace_root() {
             let mut direct_deps: Vec<PackageName> =
                 config.package_dependencies().into_iter().cloned().collect();
@@ -100,10 +102,19 @@ impl InstallManager {
             config.package_dependencies().into_iter().cloned().collect()
         };
 
+        // If compiling from tests, include the current project's test deps,
+        // when @ root, this should also include workspace test deps.
         if include_test_deps {
-            let test_deps: Vec<PackageName> =
-                config.test_dependencies().into_iter().cloned().collect();
-            direct_package_dependencies.extend(test_deps);
+            if config.is_workspace_root() {
+                let direct_test_deps: Vec<PackageName> =
+                    config.test_dependencies().into_iter().cloned().collect();
+                direct_package_dependencies.extend(direct_test_deps);
+                direct_package_dependencies.extend(query.all_workspace_test_dependencies());
+            } else {
+                let test_deps: Vec<PackageName> =
+                    config.test_dependencies().into_iter().cloned().collect();
+                direct_package_dependencies.extend(test_deps);
+            }
         }
 
         // Collect all packages to install (including dependencies)

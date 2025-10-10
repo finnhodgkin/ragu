@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::path::PathBuf;
 
-use crate::config::{add_packages_to_config, load_config};
+use crate::config::{add_packages_to_config, load_config_cwd};
 use crate::install::{cleanup_unused_packages, install_all_dependencies};
 use crate::registry::{PackageName, PackageQuery, PackageSet};
 
@@ -19,8 +19,7 @@ pub async fn execute(packages: &[String], package_set: &PackageSet, verbose: boo
 
 /// Install all dependencies from spago.yaml
 async fn install_all_from_config(verbose: bool) -> Result<()> {
-    let config =
-        load_config("spago.yaml").context("Failed to load spago.yaml. Run 'init' first.")?;
+    let config = load_config_cwd().context("Failed to load spago.yaml. Run 'init' first.")?;
 
     if verbose {
         println!("Package: {}", config.package.name.0.bright_cyan());

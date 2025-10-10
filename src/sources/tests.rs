@@ -126,6 +126,7 @@ mod tests {
             Package::Local(LocalPackage {
                 name: package_name.clone(),
                 path: local_path.clone(),
+                test_dependencies: vec![],
                 dependencies: vec![],
             }),
         );
@@ -352,6 +353,7 @@ mod tests {
             Package::Local(LocalPackage {
                 name: config.package.name.clone(),
                 path: PathBuf::from("./test"),
+                test_dependencies: vec![],
                 dependencies: vec![], // The circular dependency is in the config, not the package set
             }),
         );

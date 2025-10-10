@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use std::path::PathBuf;
 
-use crate::config::{load_config, remove_packages_from_config};
+use crate::config::{load_config_cwd, remove_packages_from_config};
 use crate::install::cleanup_unused_packages;
 use crate::registry::{PackageName, PackageSet};
 
@@ -28,8 +28,7 @@ pub async fn execute(
     }
 
     // Load current configuration
-    let config =
-        load_config("spago.yaml").context("Failed to load spago.yaml. Run 'init' first.")?;
+    let config = load_config_cwd().context("Failed to load spago.yaml. Run 'init' first.")?;
 
     // Validate that packages are actually installed
     for package_name in &packages {

@@ -83,6 +83,10 @@ pub enum Command {
         /// Clear output directory before building
         #[arg(long)]
         clear: bool,
+
+        /// Test the project
+        #[arg(short = 't', long)]
+        test: bool,
     },
 
     /// Run the project
@@ -119,6 +123,10 @@ pub enum Command {
     Init {
         /// Project name
         name: String,
+
+        /// Initialise a nested workspace package
+        #[arg(short = 'w', long)]
+        nested_package: bool,
     },
 
     /// Validate spago.yaml configuration
