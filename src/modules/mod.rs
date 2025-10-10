@@ -135,14 +135,6 @@ pub fn group_modules_by_package(modules: &[ModuleInfo]) -> HashMap<String, Vec<M
     grouped
 }
 
-/// Find a specific module by name
-pub fn find_module_by_name<'a>(
-    modules: &'a [ModuleInfo],
-    module_name: &str,
-) -> Option<&'a ModuleInfo> {
-    modules.iter().find(|m| m.name == module_name)
-}
-
 /// Get all module names from a specific package
 #[allow(dead_code)]
 pub fn get_modules_from_package<'a>(
@@ -249,32 +241,6 @@ mod tests {
         let console_modules = &grouped["console"];
         assert_eq!(console_modules.len(), 1);
         assert!(console_modules.iter().any(|m| m.name == "Effect.Console"));
-    }
-
-    #[test]
-    fn test_find_module_by_name() {
-        let modules = vec![
-            ModuleInfo {
-                name: "Data.Maybe".to_string(),
-                file_path: PathBuf::from("test1.purs"),
-                package_name: "prelude".to_string(),
-            },
-            ModuleInfo {
-                name: "Data.Either".to_string(),
-                file_path: PathBuf::from("test2.purs"),
-                package_name: "prelude".to_string(),
-            },
-        ];
-
-        // Find existing module
-        let found = find_module_by_name(&modules, "Data.Maybe");
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().name, "Data.Maybe");
-        assert_eq!(found.unwrap().package_name, "prelude");
-
-        // Find non-existing module
-        let not_found = find_module_by_name(&modules, "NonExistent");
-        assert!(not_found.is_none());
     }
 
     #[test]

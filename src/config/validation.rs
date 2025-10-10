@@ -53,7 +53,7 @@ impl Default for ValidationResult {
     }
 }
 
-/// Validate a spago configuration against a package set
+/// Validate a spago.yaml configuration against a package set
 pub fn validate_config(config: &SpagoConfig, query: &PackageQuery) -> ValidationResult {
     let mut result = ValidationResult::new();
 

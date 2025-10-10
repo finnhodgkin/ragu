@@ -1,18 +1,16 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::config::{load_config, validate_config, validate_transitive_deps};
+use crate::config::{load_config_cwd, validate_config, validate_transitive_deps};
 use crate::registry::PackageQuery;
 
-pub fn execute(path: Option<String>, verbose: bool) -> Result<()> {
-    let config_path = path.as_deref().unwrap_or("spago.yaml");
-
+pub fn execute(verbose: bool) -> Result<()> {
     if verbose {
-        println!("\nValidating configuration: {}\n", config_path);
+        println!("Validating spago.yaml configuration");
     }
 
     // Load config
-    let config = load_config(config_path)?;
+    let config = load_config_cwd()?;
 
     if verbose {
         println!("Package: {}", config.package.name.0.bright_cyan());

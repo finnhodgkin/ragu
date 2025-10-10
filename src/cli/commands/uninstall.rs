@@ -29,7 +29,7 @@ pub async fn execute(
 
     // Load current configuration
     let config =
-        load_config("spago.yaml").context("Failed to load spago.yaml. Run 'spago init' first.")?;
+        load_config("spago.yaml").context("Failed to load spago.yaml. Run 'init' first.")?;
 
     // Validate that packages are actually installed
     for package_name in &packages {

@@ -28,7 +28,7 @@ const TAG_CACHE_TTL_HOURS: i64 = 24;
 pub fn get_cache_dir() -> Result<PathBuf> {
     let cache_dir = dirs::cache_dir()
         .context("Failed to get system cache directory")?
-        .join("spago-rust");
+        .join("ragu");
 
     fs::create_dir_all(&cache_dir).context("Failed to create cache directory")?;
 
@@ -39,7 +39,7 @@ pub fn get_cache_dir() -> Result<PathBuf> {
 pub fn get_package_set_cache_dir() -> Result<PathBuf> {
     let cache_dir = dirs::cache_dir()
         .context("Failed to get system cache directory")?
-        .join("spago-rust")
+        .join("ragu")
         .join("package-sets");
 
     fs::create_dir_all(&cache_dir).context("Failed to create cache directory")?;
@@ -51,7 +51,7 @@ pub fn get_package_set_cache_dir() -> Result<PathBuf> {
 fn get_metadata_cache_dir() -> Result<PathBuf> {
     let cache_dir = dirs::cache_dir()
         .context("Failed to get system cache directory")?
-        .join("spago-rust")
+        .join("ragu")
         .join("metadata");
 
     fs::create_dir_all(&cache_dir).context("Failed to create cache directory")?;
@@ -231,7 +231,7 @@ pub fn save_cached_registry_versions(versions: &[String]) -> Result<()> {
 pub fn get_registry_cache_dir() -> Result<PathBuf> {
     let cache_dir = dirs::cache_dir()
         .context("Failed to get system cache directory")?
-        .join("spago-rust")
+        .join("ragu")
         .join("registry");
 
     fs::create_dir_all(&cache_dir).context("Failed to create registry cache directory")?;

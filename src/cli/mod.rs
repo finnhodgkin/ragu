@@ -4,9 +4,9 @@ use clap::{Parser, Subcommand};
 
 pub use commands::execute_command;
 
-/// Spago Rust - A rust port of the popular PureScript package manager
+/// 🍝 Ragu - A rust port of the popular PureScript package manager
 #[derive(Parser, Debug)]
-#[command(name = "spago")]
+#[command(name = "ragu")]
 #[command(version, about, long_about = None)]
 pub struct Cli {
     /// Force refresh cache (bypass cached package sets)
@@ -97,19 +97,15 @@ pub enum Command {
     /// Show package set statistics
     Stats,
 
-    /// Initialize a new Spago project
+    /// Initialize a new purescript project in the CWD
     Init {
         /// Project name
         #[arg(short = 'n', long)]
-        name: Option<String>,
+        name: String,
     },
 
     /// Validate spago.yaml configuration
-    Validate {
-        /// Path to spago.yaml (defaults to ./spago.yaml)
-        #[arg(short = 'p', long)]
-        path: Option<String>,
-    },
+    Validate,
 
     /// List all modules in the project and dependencies
     Modules {
@@ -159,7 +155,7 @@ pub enum CacheAction {
     /// Show cache location and size
     Info,
 
-    /// Clear all cached package sets
+    /// Clear all cached data including package sets, packages and metadata
     Clear {
         /// Clear the .spago and output directories as well
         #[arg(short = 'a', long)]

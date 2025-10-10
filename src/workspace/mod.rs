@@ -155,7 +155,7 @@ pub fn display_dependency_stats(
     if !broken_only {
         if let Some(to_install) = to_install {
             println!(
-                "spago-rust install {}",
+                "ragu install {}",
                 to_install
                     .iter()
                     .map(|p| p.0.clone())
@@ -166,7 +166,7 @@ pub fn display_dependency_stats(
 
         if let Some(to_uninstall) = to_uninstall {
             println!(
-                "spago-rust uninstall {}",
+                "ragu uninstall {}",
                 to_uninstall
                     .iter()
                     .map(|p| p.0.clone())

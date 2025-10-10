@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::modules::{discover_all_modules, find_module_by_name};
+use crate::modules::discover_all_modules;
 
 /// Information about an import found in source code
 #[derive(Debug, Clone)]
@@ -19,8 +19,6 @@ pub struct ImportInfo {
     pub line_number: usize,
 }
 
-const PRIMITIVE: [&str; 1] = ["Prim.Row"];
-
 /// Execute the imports command
 pub fn execute(verbose: bool) -> Result<()> {
     if verbose {
@@ -33,137 +31,42 @@ pub fn execute(verbose: bool) -> Result<()> {
     // Use current project config for sources since that's where dependencies are installed
     let sources = crate::sources::generate_sources(&config, None, false, verbose)?;
 
-    let workspace_root_config =
-        crate::config::load_config(Path::join(&config.workspace_root, "spago.yaml"))?;
-
-    let workspace_package_set = workspace_root_config.package_set()?;
-
-    // Use current project config for both sources and workspace sources
-    // This ensures we're looking in the correct .spago directory (current project's)
-    // but with access to the workspace root's package set
-    let workspace_sources = crate::sources::generate_sources(
-        &workspace_root_config,
-        Some(workspace_package_set),
-        true,
-        verbose,
-    )?;
-
-    let package_modules = discover_all_modules(&sources)?;
-    let workspace_modules = discover_all_modules(&workspace_sources)?;
+    let package_modules = discover_all_modules(&sources)?
+        .into_iter()
+        .map(|m| (m.name, m.package_name))
+        .collect::<HashMap<String, String>>();
 
     // Extract imports from current project's source files
     let imports = extract_imports_from_sources(&std::env::current_dir()?)?;
+    // Create a map to group imports by package
+    let mut grouped_imports: HashMap<String, Vec<&ImportInfo>> = HashMap::new();
 
-    println!("Imports: {:?}", imports);
-
-    let deps = config.package_dependencies();
-    let mut installed = HashSet::new();
-    let mut indirect_deps_to_install = HashSet::new();
-    let mut workspace_deps_to_install = HashSet::new();
-    let mut not_found_deps = HashSet::new();
-
-    for import in imports {
-        if PRIMITIVE.contains(&import.module_name.as_str()) {
-            continue;
-        }
-
-        if let Some(module) = find_module_by_name(&package_modules, &import.module_name) {
-            if module.package_name == "main" || module.package_name == config.package.name.0 {
-                continue;
-            } else if deps.iter().any(|f| f.0 == module.package_name) {
-                installed.insert(module.package_name.clone());
-            } else {
-                indirect_deps_to_install.insert(module.package_name.clone());
-            }
-        } else if let Some(module) = find_module_by_name(&workspace_modules, &import.module_name) {
-            workspace_deps_to_install.insert(module.package_name.clone());
-        } else {
-            not_found_deps.insert(import.module_name);
-        }
-    }
-
-    let mut to_uninstall = HashSet::new();
-    for dep in &deps {
-        if !installed.contains(&dep.0) {
-            to_uninstall.insert(dep.0.clone());
-        }
-    }
-
-    // Verbose logging for detailed analysis
-    if verbose {
-        if !indirect_deps_to_install.is_empty() {
-            println!("Transitive dependencies that you are directly calling:");
-            for dep in &indirect_deps_to_install {
-                println!("  {}", dep);
-            }
-        }
-
-        if !workspace_deps_to_install.is_empty() {
-            println!("Workspace dependencies that you are missing but directly calling:");
-            for dep in &workspace_deps_to_install {
-                println!("  {}", dep);
-            }
-        }
-
-        if !not_found_deps.is_empty() {
-            println!("Modules that don't appear to be in your project at all:");
-            for dep in &not_found_deps {
-                println!("  {}", dep);
-            }
-        }
-
-        if !to_uninstall.is_empty() {
-            println!("Dependencies that have no imports:");
-            for dep in &to_uninstall {
-                println!("  {}", dep);
-            }
-        }
-    }
-
-    let all_to_install: Vec<String> = indirect_deps_to_install
-        .union(&workspace_deps_to_install)
-        .cloned()
-        .collect();
-
-    let mut errors = false;
-
-    // Check if there's anything to fix
-    if all_to_install.is_empty() && to_uninstall.is_empty() {
-        println!("{} All imports are properly configured", "✓".green());
-        return Ok(());
-    }
-
-    // Show fix commands
-    println!("To fix these issues, you can run:");
-    if !all_to_install.is_empty() {
-        println!("spago-rust install {}", all_to_install.join(" "));
-        errors = true;
-    }
-    if !to_uninstall.is_empty() {
-        let to_uninstall_str = to_uninstall
-            .iter()
+    // Group imports by package name, using "unknown" for those without a package
+    for import in &imports {
+        let package = package_modules
+            .get(&import.module_name)
             .cloned()
-            .collect::<Vec<String>>()
-            .join(" ");
-        println!("spago-rust uninstall {}", to_uninstall_str);
+            .unwrap_or_else(|| "unknown".to_string());
+        grouped_imports.entry(package).or_default().push(import);
     }
 
-    // Show error for modules not found in workspace
-    if !not_found_deps.is_empty() {
-        errors = true;
-        println!(
-            "{} Modules not found in workspace: {}",
-            "❌".red().bold(),
-            not_found_deps
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
+    // Sort packages and print imports
+    let mut packages: Vec<_> = grouped_imports.keys().collect();
+    packages.sort();
 
-    if errors {
-        std::process::exit(1);
+    for package in packages {
+        let mut imports_in_package = grouped_imports.get(package).unwrap().to_vec();
+        imports_in_package.sort_by(|a, b| a.module_name.cmp(&b.module_name));
+
+        for import in imports_in_package {
+            if package == "main" {
+                println!("{}, ({})", import.module_name, "current".bright_cyan());
+            } else if package == "unknown" {
+                println!("{}", import.module_name);
+            } else {
+                println!("{} ({})", import.module_name, package.dimmed());
+            }
+        }
     }
 
     Ok(())

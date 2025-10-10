@@ -87,7 +87,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             println!("  Name: {:?}", name);
             Ok(())
         }
-        Command::Validate { path } => validate::execute(path, cli.verbose),
+        Command::Validate => validate::execute(cli.verbose),
         Command::Modules {
             group_by_package,
             package,
