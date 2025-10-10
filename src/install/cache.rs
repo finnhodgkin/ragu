@@ -12,7 +12,6 @@ pub struct CachedPackage {
     pub name: PackageName,
     pub version: String,
     pub key: String,
-    pub repo_url: String,
     pub cached_path: PathBuf,
     pub installed_at: chrono::DateTime<chrono::Utc>,
 }
@@ -109,7 +108,6 @@ impl GlobalPackageCache {
                 name: name.clone(),
                 version: version.to_string(),
                 key: CACHE_KEY.to_string(),
-                repo_url: String::new(), // Will be filled by caller
                 cached_path: cached_path.clone(),
                 installed_at: chrono::Utc::now(),
             },
@@ -155,7 +153,7 @@ impl GlobalPackageCache {
 }
 
 /// Recursively copy a directory
-fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
+pub fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     if !dst.exists() {
         fs::create_dir_all(dst)?;
     }

@@ -18,5 +18,7 @@ pub use package_sets::{
 };
 pub use packages::{PackageQuery, PackageSetStats, ValidationResult};
 pub use purescript_registry::get_package_set_by_registry_version;
-pub use types::{LocalPackage, Package, PackageName, PackageSet, PackageSetPackage};
+pub use types::{
+    LocalPackage, Package, PackageName, PackageSet, PackageSetPackage, RegistryPackage,
+};
 pub use workspace_packages::add_workspace_packages;

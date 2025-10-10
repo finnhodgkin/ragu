@@ -1,14 +1,17 @@
 use anyhow::{Context, Result};
+use flate2::bufread::GzDecoder;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::task;
 
-use super::cache::GlobalPackageCache;
+use super::cache::{copy_dir_all, GlobalPackageCache};
 use super::git::{fetch_package, PackageInfo};
-use crate::config::{ExtraPackageConfig, SpagoConfig};
-use crate::registry::{Package, PackageName, PackageQuery, PackageSet};
+use crate::config::SpagoConfig;
+use crate::registry::{
+    Package, PackageName, PackageQuery, PackageSet, PackageSetPackage, RegistryPackage,
+};
 
 /// Result of an installation operation
 #[derive(Debug)]
@@ -184,41 +187,137 @@ impl InstallManager {
         })?;
 
         match package {
-            Package::Local(package) => Ok(None),
-            Package::Registry(package) => Ok(None),
-            Package::Remote(package) => {
-                let folder_name = &package.name.0;
-                let package_dir = spago_dir.join(&folder_name);
-
-                // Check if already installed
-                if package_dir.exists() {
-                    return Ok(None); // Already installed
-                }
-
-                // Check global cache first
-                if global_cache.is_cached(&package.name, &package.version)? {
-                    // Copy from cache
-                    global_cache.copy_from_cache(&package.name, &package.version, &package_dir)?;
-                    return Ok(Some(InstalledPackage::Git(PackageInfo {
-                        name: package.name.clone(),
-                        version: package.version.clone(),
-                        repo_url: package.repo.clone(),
-                        local_path: package_dir,
-                    })));
-                }
-
-                // Fetch from Git and cache
-                let package_info = fetch_package(package, spago_dir)?;
-
-                // Cache the package for future use
-                global_cache.cache_package(
-                    &package_info.name,
-                    &package_info.version,
-                    &package_info.local_path,
-                )?;
-
-                Ok(Some(InstalledPackage::Git(package_info)))
+            Package::Local(_) => Ok(None), // No need to install local
+            Package::Registry(package) => {
+                install_registry_package(package, global_cache, spago_dir)
             }
+            Package::Remote(package) => install_git_package(package, global_cache, spago_dir),
         }
     }
+}
+
+fn install_registry_package(
+    package: &RegistryPackage,
+    global_cache: &GlobalPackageCache,
+    spago_dir: &Path,
+) -> Result<Option<InstalledPackage>> {
+    let package_dir = spago_dir.join(&package.name.0);
+
+    // Check if already installed
+    if package_dir.exists() {
+        return Ok(None); // Already installed
+    }
+
+    // Check global cache first
+    if global_cache.is_cached(&package.name, &package.version)? {
+        // Copy from cache
+        global_cache.copy_from_cache(&package.name, &package.version, &package_dir)?;
+        return Ok(Some(InstalledPackage::Git(PackageInfo {
+            name: package.name.clone(),
+            version: package.version.clone(),
+            repo_url: "Registry package".to_string(),
+            local_path: package_dir,
+        })));
+    }
+
+    // Download and extract the registry package
+    let registry_tar_url = format!(
+        "https://packages.registry.purescript.org/{}/{}.tar.gz",
+        package.name.0, package.version
+    );
+    let response = reqwest::blocking::get(&registry_tar_url)?;
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "Failed to fetch package {} from registry: HTTP {}",
+            package.name.0,
+            response.status()
+        );
+    }
+
+    fs::create_dir_all(&package_dir).context("Failed to create package directory")?;
+
+    // Create the package directory
+    let tar_data = response.bytes()?;
+    let gz_data = GzDecoder::new(tar_data.as_ref());
+    let mut tar = tar::Archive::new(gz_data);
+    // Extract the tar archive to a temporary directory first
+    let temp_dir = tempfile::tempdir().context("Failed to create temporary directory")?;
+    tar.unpack(temp_dir.path())
+        .context("Failed to extract tar archive")?;
+
+    // Find the single top-level directory and move its contents
+    let entries: Vec<_> = std::fs::read_dir(temp_dir.path())
+        .context("Failed to read extracted directory")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Failed to read directory entries")?;
+
+    if entries.len() != 1 {
+        anyhow::bail!(
+            "Expected exactly one top-level directory in tar archive, found {}",
+            entries.len()
+        );
+    }
+
+    let top_level_dir = &entries[0];
+    if !top_level_dir.path().is_dir() {
+        anyhow::bail!("Top-level entry is not a directory");
+    }
+
+    // Move contents from the top-level directory to the package directory
+    for entry in
+        std::fs::read_dir(&top_level_dir.path()).context("Failed to read top-level directory")?
+    {
+        let entry = entry.context("Failed to read directory entry")?;
+        let src_path = entry.path();
+        let dst_path = package_dir.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_all(&src_path, &dst_path).context("Failed to copy directory")?;
+        } else {
+            std::fs::copy(&src_path, &dst_path).context("Failed to copy file")?;
+        }
+    }
+
+    // Cache the package for future use
+    global_cache.cache_package(&package.name, &package.version, &package_dir)?;
+
+    Ok(None)
+}
+
+fn install_git_package(
+    package: &PackageSetPackage,
+    global_cache: &GlobalPackageCache,
+    spago_dir: &Path,
+) -> Result<Option<InstalledPackage>> {
+    let folder_name = &package.name.0;
+    let package_dir = spago_dir.join(&folder_name);
+
+    // Check if already installed
+    if package_dir.exists() {
+        return Ok(None); // Already installed
+    }
+
+    // Check global cache first
+    if global_cache.is_cached(&package.name, &package.version)? {
+        // Copy from cache
+        global_cache.copy_from_cache(&package.name, &package.version, &package_dir)?;
+        return Ok(Some(InstalledPackage::Git(PackageInfo {
+            name: package.name.clone(),
+            version: package.version.clone(),
+            repo_url: package.repo.clone(),
+            local_path: package_dir,
+        })));
+    }
+
+    // Fetch from Git and cache
+    let package_info = fetch_package(package, spago_dir)?;
+
+    // Cache the package for future use
+    global_cache.cache_package(
+        &package_info.name,
+        &package_info.version,
+        &package_info.local_path,
+    )?;
+
+    Ok(Some(InstalledPackage::Git(package_info)))
 }
