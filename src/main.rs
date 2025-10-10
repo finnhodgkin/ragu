@@ -6,6 +6,7 @@ mod init;
 mod install;
 mod modules;
 mod registry;
+mod run;
 mod sources;
 mod test;
 mod workspace;

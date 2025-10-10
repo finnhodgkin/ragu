@@ -17,7 +17,7 @@ pub fn execute(name: String) -> Result<()> {
         .clone();
 
     yaml::write(&name, &registry_version)?;
-    src::write(&name)?;
+    src::write()?;
     test::write(&name)?;
     ignore::write()?;
     extras::write()?;

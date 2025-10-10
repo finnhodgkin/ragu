@@ -12,7 +12,7 @@ use colored::Colorize;
 
 use crate::cli::{CacheAction, Cli, Command};
 use crate::registry::{PackageName, PackageQuery};
-use crate::{imports, init, test, workspace};
+use crate::{imports, init, run, test, workspace};
 
 /// Execute the CLI command
 pub fn execute_command(cli: Cli) -> Result<()> {
@@ -71,6 +71,9 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             .block_on(crate::build::execute(watch, clear, cli.verbose)),
         Command::Test { quick_test } => {
             tokio::runtime::Runtime::new()?.block_on(test::execute(quick_test, cli.verbose))
+        }
+        Command::Run { module, quick_run } => {
+            tokio::runtime::Runtime::new()?.block_on(run::execute(module, quick_run, cli.verbose))
         }
         Command::Sources => crate::sources::execute_sources(cli.verbose),
         Command::Cache { action } => match action {

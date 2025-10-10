@@ -85,6 +85,17 @@ pub enum Command {
         clear: bool,
     },
 
+    /// Run the project
+    Run {
+        /// Module to run
+        #[arg(short = 'm', long)]
+        module: Option<String>,
+
+        /// Attempt run without compilation
+        #[arg(short = 'q', long)]
+        quick_run: bool,
+    },
+
     /// Test the project
     Test {
         /// Quick test (skip compilation)
