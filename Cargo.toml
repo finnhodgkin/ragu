@@ -2,6 +2,7 @@
 name = "ragu"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/finnhodgkin/ragu"
 
 [dependencies]
 reqwest = { version = "0.12", features = ["blocking", "json"] }
@@ -26,3 +27,7 @@ glob = "0.3"
 tempfile = "3.0"
 flate2 = "1.1.4"
 
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
