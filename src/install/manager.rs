@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
+use colored::Colorize;
 use flate2::bufread::GzDecoder;
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::task;
@@ -24,6 +26,13 @@ pub struct InstallResult {
 pub enum InstalledPackage {
     Git(PackageInfo),
     Local(LocalPackageInfo),
+    Registry(RegistryPackageInfo),
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryPackageInfo {
+    pub name: PackageName,
+    pub version: String,
 }
 
 impl InstalledPackage {
@@ -31,6 +40,15 @@ impl InstalledPackage {
         match self {
             InstalledPackage::Git(package) => &package.name,
             InstalledPackage::Local(package) => &package.name,
+            InstalledPackage::Registry(package) => &package.name,
+        }
+    }
+
+    pub fn type_str(&self) -> &str {
+        match self {
+            InstalledPackage::Git(_) => "git",
+            InstalledPackage::Local(_) => "local",
+            InstalledPackage::Registry(_) => "registry",
         }
     }
 
@@ -38,6 +56,7 @@ impl InstalledPackage {
         match self {
             InstalledPackage::Git(package) => Some(&package.version),
             InstalledPackage::Local(_) => None,
+            InstalledPackage::Registry(package) => Some(&package.version),
         }
     }
 }
@@ -103,6 +122,10 @@ impl InstallManager {
         let spago_dir = self.spago_dir.clone();
         let global_cache = Arc::new(self.global_cache.clone());
 
+        print!("\r\x1B[K"); // Clear current line
+        print!("\rStarting install...");
+        std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
+
         for package_name in all_packages {
             let package_set = package_set.clone();
             let spago_dir = spago_dir.clone();
@@ -122,15 +145,23 @@ impl InstallManager {
         for task in tasks {
             match task.await? {
                 Ok(package_info) => match package_info {
-                    Some(git_installed @ InstalledPackage::Git(_)) => {
-                        installed.push(git_installed);
-                    }
-                    Some(local_installed @ InstalledPackage::Local(_)) => {
-                        installed.push(local_installed);
+                    Some(package) => {
+                        print!("\r\x1B[K"); // Clear current line
+                        print!(
+                            "\rInstalled {} ({})",
+                            package.name().0.bold(),
+                            package.type_str()
+                        );
+                        std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
+                        installed.push(package);
                     }
                     None => {}
                 },
                 Err(e) => {
+                    print!("\r\x1B[K"); // Clear current line
+                    print!("\rError installing package: {}", e.to_string().red());
+                    print!("\r"); // Keep error lines visible
+                    std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
                     errors.push(e.to_string());
                 }
             }
@@ -139,7 +170,7 @@ impl InstallManager {
         if !errors.is_empty() {
             return Err(anyhow::anyhow!(
                 "Failed to install dependencies: {}",
-                errors.join(", ")
+                errors.join(", ").red()
             ));
         }
 
@@ -302,7 +333,10 @@ fn install_registry_package(
     // Cache the package for future use
     global_cache.cache_package(&package.name, &package.version, &package_dir)?;
 
-    Ok(None)
+    Ok(Some(InstalledPackage::Registry(RegistryPackageInfo {
+        name: package.name.clone(),
+        version: package.version.clone(),
+    })))
 }
 
 fn install_git_package(

@@ -19,17 +19,11 @@ pub async fn execute(packages: &[String], package_set: &PackageSet, verbose: boo
 
 /// Install all dependencies from spago.yaml
 async fn install_all_from_config(verbose: bool) -> Result<()> {
-    if verbose {
-        println!("Loading spago.yaml configuration...");
-    }
-
     let config =
         load_config("spago.yaml").context("Failed to load spago.yaml. Run 'spago init' first.")?;
 
     if verbose {
         println!("Package: {}", config.package.name.0.bright_cyan());
-        let all_deps = config.all_dependencies();
-        println!("Dependencies to install: {}", all_deps.len());
     }
 
     // Load package set
@@ -40,6 +34,8 @@ async fn install_all_from_config(verbose: bool) -> Result<()> {
 
     // Clean up unused packages
     let removed_packages = cleanup_unused_packages(&config, &package_set)?;
+
+    print!("\r\x1B[K"); // Clear current line that contained the install progress
 
     // Report results
     if result.is_success() {
