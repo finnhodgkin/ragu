@@ -181,10 +181,16 @@ pub fn find_package_directory(
         return Ok(Some(package.path.clone()));
     }
 
-    let entries = fs::read_dir(spago_dir).context("Failed to read .spago directory")?;
+    let entries = fs::read_dir(spago_dir).context(format!(
+        "Failed to read .spago directory for {}",
+        package_name.0
+    ))?;
 
     for entry in entries {
-        let entry = entry.context("Failed to read directory entry")?;
+        let entry = entry.context(format!(
+            "Failed to read directory entry for {}",
+            package_name.0
+        ))?;
         let path = entry.path();
 
         if path.is_dir() {

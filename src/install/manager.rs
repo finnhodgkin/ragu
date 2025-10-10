@@ -234,47 +234,68 @@ fn install_registry_package(
         );
     }
 
-    fs::create_dir_all(&package_dir).context("Failed to create package directory")?;
+    fs::create_dir_all(&package_dir).context(format!(
+        "Failed to create package directory for {}",
+        package.name.0
+    ))?;
 
     // Create the package directory
     let tar_data = response.bytes()?;
     let gz_data = GzDecoder::new(tar_data.as_ref());
     let mut tar = tar::Archive::new(gz_data);
     // Extract the tar archive to a temporary directory first
-    let temp_dir = tempfile::tempdir().context("Failed to create temporary directory")?;
-    tar.unpack(temp_dir.path())
-        .context("Failed to extract tar archive")?;
+    let temp_dir = tempfile::tempdir().context(format!(
+        "Failed to create temporary directory for {}",
+        package.name.0
+    ))?;
+    tar.unpack(temp_dir.path()).context(format!(
+        "Failed to extract tar archive for {}",
+        package.name.0
+    ))?;
 
     // Find the single top-level directory and move its contents
     let entries: Vec<_> = std::fs::read_dir(temp_dir.path())
-        .context("Failed to read extracted directory")?
+        .context(format!(
+            "Failed to read extracted directory for {}",
+            package.name.0
+        ))?
         .collect::<Result<Vec<_>, _>>()
-        .context("Failed to read directory entries")?;
+        .context(format!(
+            "Failed to read directory entries for {}",
+            package.name.0
+        ))?;
 
     if entries.len() != 1 {
         anyhow::bail!(
-            "Expected exactly one top-level directory in tar archive, found {}",
+            "Expected exactly one top-level directory in tar archive for {}, found {}",
+            package.name.0,
             entries.len()
         );
     }
 
     let top_level_dir = &entries[0];
     if !top_level_dir.path().is_dir() {
-        anyhow::bail!("Top-level entry is not a directory");
+        anyhow::bail!("Top-level entry is not a directory for {}", package.name.0);
     }
 
     // Move contents from the top-level directory to the package directory
-    for entry in
-        std::fs::read_dir(&top_level_dir.path()).context("Failed to read top-level directory")?
-    {
-        let entry = entry.context("Failed to read directory entry")?;
+    for entry in std::fs::read_dir(&top_level_dir.path()).context(format!(
+        "Failed to read top-level directory for {}",
+        package.name.0
+    ))? {
+        let entry = entry.context(format!(
+            "Failed to read directory entry for {}",
+            package.name.0
+        ))?;
         let src_path = entry.path();
         let dst_path = package_dir.join(entry.file_name());
 
         if src_path.is_dir() {
-            copy_dir_all(&src_path, &dst_path).context("Failed to copy directory")?;
+            copy_dir_all(&src_path, &dst_path)
+                .context(format!("Failed to copy directory for {}", package.name.0))?;
         } else {
-            std::fs::copy(&src_path, &dst_path).context("Failed to copy file")?;
+            std::fs::copy(&src_path, &dst_path)
+                .context(format!("Failed to copy file for {}", package.name.0))?;
         }
     }
 
