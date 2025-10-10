@@ -34,7 +34,7 @@ pub fn load_config(path: impl AsRef<Path>, ignore_when_workspace: bool) -> Resul
             .context("Failed to parse workspace section of spago.yaml")?
             .workspace;
 
-    if ignore_when_workspace {
+    if ignore_when_workspace && workspace_config.is_some() {
         return Err(anyhow::anyhow!(
             "Workspace section found in spago.yaml, but ignore_when_workspace is true"
         ));

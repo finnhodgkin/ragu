@@ -9,6 +9,7 @@ pub fn execute(
     show_deps: bool,
     show_transitive: bool,
     show_reverse: bool,
+    only_workspace: bool,
 ) -> Result<()> {
     let package_type = query.get(package_name).context(format!(
         "Package '{}' not found in package set",
@@ -69,12 +70,14 @@ pub fn execute(
             println!("  {}", "None".dimmed());
         } else {
             for dep in deps.iter() {
-                println!(
-                    "  {} {} {}",
-                    "→".cyan(),
-                    dep.name().0,
-                    format!("({})", dep.version().unwrap_or(&"local".to_string())).dimmed()
-                );
+                if !only_workspace || dep.is_local() {
+                    println!(
+                        "  {} {} {}",
+                        "→".cyan(),
+                        dep.name().0,
+                        format!("({})", dep.version().unwrap_or(&"local".to_string())).dimmed()
+                    );
+                }
             }
         }
     }

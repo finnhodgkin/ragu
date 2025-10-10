@@ -27,6 +27,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             deps,
             transitive,
             reverse,
+            only_workspace,
         } => {
             let config = crate::config::load_config_cwd()
                 .context("Failed to load spago.yaml configuration")?;
@@ -38,6 +39,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
                 deps,
                 transitive,
                 reverse,
+                only_workspace,
             )
         }
         Command::Search { query, details } => {

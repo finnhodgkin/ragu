@@ -47,6 +47,10 @@ pub enum Command {
         /// Show reverse dependencies (packages that depend on this)
         #[arg(short = 'r', long)]
         reverse: bool,
+
+        /// Show only local workspace dependencies
+        #[arg(short = 'w', long)]
+        only_workspace: bool,
     },
 
     /// Search for packages by name

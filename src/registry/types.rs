@@ -117,4 +117,9 @@ impl Package {
             Package::Registry(package) => &package.dependencies,
         }
     }
+
+    /// Check if the package is a local package
+    pub fn is_local(&self) -> bool {
+        matches!(self, Package::Local(_))
+    }
 }
