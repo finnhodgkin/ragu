@@ -30,13 +30,6 @@ pub enum Command {
         all: bool,
     },
 
-    /// SrcAsSources
-    SrcAsSources {
-        /// Run the compiler on the sources
-        #[arg(short = 'b', long)]
-        build: bool,
-    },
-
     /// Show information about a specific package
     Info {
         /// Package name to inspect
@@ -98,6 +91,12 @@ pub enum Command {
         /// Test the project
         #[arg(short = 't', long)]
         test: bool,
+
+        /// Only build the exact project sources.
+        /// Rather than compiling all potential depedency globs,
+        /// just compile the exact requirements from /src.
+        #[arg(short = 'q', long)]
+        quick_build: bool,
     },
 
     /// Run the project
@@ -119,7 +118,11 @@ pub enum Command {
     },
 
     /// Output source file globs for piping to other tools
-    Sources,
+    Sources {
+        /// Only output the exact project sources from /src with the required imports
+        #[arg(short = 'q', long)]
+        quick_sources: bool,
+    },
 
     /// Manage cache
     Cache {

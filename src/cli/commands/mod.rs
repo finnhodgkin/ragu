@@ -22,7 +22,6 @@ pub fn execute_command(cli: Cli) -> Result<()> {
 
     match cli.command {
         Command::List { all } => list::execute(all, cli.force_refresh),
-        Command::SrcAsSources { build } => src_as_sources::execute(build, cli.verbose),
         Command::Info {
             package,
             deps,
@@ -70,15 +69,36 @@ pub fn execute_command(cli: Cli) -> Result<()> {
                 cli.verbose,
             ))
         }
-        Command::Build { watch, clear, test } => tokio::runtime::Runtime::new()?
-            .block_on(crate::build::execute(watch, clear, test, cli.verbose)),
+        Command::Build {
+            watch,
+            clear,
+            test,
+            quick_build,
+        } => {
+            if quick_build {
+                src_as_sources::execute(test, true, cli.verbose)
+            } else {
+                tokio::runtime::Runtime::new()?.block_on(crate::build::execute(
+                    watch,
+                    clear,
+                    test,
+                    cli.verbose,
+                ))
+            }
+        }
         Command::Test { quick_test } => {
             tokio::runtime::Runtime::new()?.block_on(test::execute(quick_test, cli.verbose))
         }
         Command::Run { module, quick_run } => {
             tokio::runtime::Runtime::new()?.block_on(run::execute(module, quick_run, cli.verbose))
         }
-        Command::Sources => crate::sources::execute_sources(cli.verbose),
+        Command::Sources { quick_sources } => {
+            if quick_sources {
+                src_as_sources::execute(false, true, cli.verbose)
+            } else {
+                crate::sources::execute_sources(cli.verbose)
+            }
+        }
         Command::Cache { action } => match action {
             CacheAction::Info => cache::info(),
             CacheAction::Clear { all } => cache::clear(all),

@@ -5,17 +5,17 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use glob::glob;
 use rayon::prelude::*;
-mod benchmark;
 mod import_parsing;
 
 use crate::{
     build::compiler::execute_compiler,
     sources::{generate_sources, BuildSources},
+    test::TEST_SOURCES,
 };
 
 use import_parsing::parse_purescript_file;
 
-pub fn execute(build: bool, verbose: bool) -> Result<()> {
+pub fn execute(include_test_sources: bool, build: bool, verbose: bool) -> Result<()> {
     if verbose {
         println!("{} Generating source globs from src", "→".cyan());
     }
@@ -23,7 +23,7 @@ pub fn execute(build: bool, verbose: bool) -> Result<()> {
     let config = crate::config::load_config_cwd()?;
     let sources = generate_sources(&config, None, false, verbose)?;
 
-    let modules = discover_all_modules(sources)?;
+    let modules = discover_all_modules(sources, include_test_sources)?;
 
     println!("{}", "Starting compilation".dimmed());
 
@@ -62,7 +62,10 @@ pub struct ModuleInfo {
 }
 
 /// Discover all modules in the project and its dependencies
-fn discover_all_modules(sources: BuildSources) -> Result<Vec<ModuleInfo>> {
+fn discover_all_modules(
+    sources: BuildSources,
+    include_test_sources: bool,
+) -> Result<Vec<ModuleInfo>> {
     // First, get all dependency sources to build a module name -> file path mapping
     let mut all_globs = sources
         .dependency_globs
@@ -75,7 +78,11 @@ fn discover_all_modules(sources: BuildSources) -> Result<Vec<ModuleInfo>> {
     let module_to_file: HashMap<String, PathBuf> = build_module_mapping(&all_globs)?;
 
     // Get main source files
-    let main_files = get_files_from_glob(&sources.main_sources)?;
+    let mut main_files = get_files_from_glob(&sources.main_sources)?;
+
+    if include_test_sources {
+        main_files.extend(get_files_from_glob(&TEST_SOURCES)?);
+    }
 
     // Recursively find all required files starting from main sources
     let required_files = find_transitive_dependencies(&main_files, &module_to_file)?;
