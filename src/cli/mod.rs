@@ -30,6 +30,13 @@ pub enum Command {
         all: bool,
     },
 
+    /// SrcAsSources
+    SrcAsSources {
+        /// Run the compiler on the sources
+        #[arg(short = 'b', long)]
+        build: bool,
+    },
+
     /// Show information about a specific package
     Info {
         /// Package name to inspect

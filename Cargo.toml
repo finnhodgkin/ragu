@@ -28,6 +28,8 @@ tempfile = "3.0"
 openssl = { version = "0.10", features = ["vendored"] }
 flate2 = "1.1.4"
 heck = "0.4"
+rayon = "1.8"
+nom = "7.1"
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

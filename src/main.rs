@@ -8,6 +8,7 @@ mod modules;
 mod registry;
 mod run;
 mod sources;
+mod src_as_sources;
 mod test;
 mod workspace;
 

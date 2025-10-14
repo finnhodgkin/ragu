@@ -12,7 +12,7 @@ use colored::Colorize;
 
 use crate::cli::{CacheAction, Cli, Command};
 use crate::registry::{PackageName, PackageQuery};
-use crate::{imports, init, run, test, workspace};
+use crate::{imports, init, run, src_as_sources, test, workspace};
 
 /// Execute the CLI command
 pub fn execute_command(cli: Cli) -> Result<()> {
@@ -22,6 +22,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
 
     match cli.command {
         Command::List { all } => list::execute(all, cli.force_refresh),
+        Command::SrcAsSources { build } => src_as_sources::execute(build, cli.verbose),
         Command::Info {
             package,
             deps,
