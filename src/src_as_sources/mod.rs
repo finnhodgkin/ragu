@@ -79,8 +79,8 @@ fn discover_all_modules(
         .collect::<Vec<String>>();
     all_globs.push(sources.main_sources.clone());
 
-    // Build a mapping from module names to file paths from all sources
-    let module_to_file: HashMap<String, PathBuf> = build_module_mapping(&all_globs)?;
+    // Build a mapping from module names to ModuleInfo from all sources
+    let module_to_info: HashMap<String, ModuleInfo> = build_module_mapping(&all_globs)?;
 
     // Get main source files
     let mut main_files = get_files_from_glob(&sources.main_sources)?;
@@ -89,21 +89,15 @@ fn discover_all_modules(
         main_files.extend(get_files_from_glob(&TEST_SOURCES)?);
     }
 
-    // Recursively find all required files starting from main sources
-    let required_files = find_transitive_dependencies(&main_files, &module_to_file)?;
+    // Recursively find all required modules starting from main sources
+    let required_modules = find_transitive_dependencies(&main_files, &module_to_info)?;
 
-    // Convert file paths back to ModuleInfo structs
-    let modules: Vec<ModuleInfo> = required_files
-        .par_iter()
-        .filter_map(|path| extract_info_from_file(path).ok())
-        .collect();
-
-    Ok(modules)
+    Ok(required_modules)
 }
 
-/// Build a mapping from module names to file paths from all glob patterns
-fn build_module_mapping(globs: &[String]) -> Result<HashMap<String, PathBuf>> {
-    let results: Result<Vec<HashMap<String, PathBuf>>> = globs
+/// Build a mapping from module names to ModuleInfo from all glob patterns
+fn build_module_mapping(globs: &[String]) -> Result<HashMap<String, ModuleInfo>> {
+    let results: Result<Vec<HashMap<String, ModuleInfo>>> = globs
         .par_iter()
         .map(|pattern| {
             let files = get_files_from_glob(pattern)?;
@@ -111,7 +105,7 @@ fn build_module_mapping(globs: &[String]) -> Result<HashMap<String, PathBuf>> {
 
             for file in files {
                 if let Ok(module_info) = extract_info_from_file(&file) {
-                    mapping.insert(module_info.name, file);
+                    mapping.insert(module_info.name.clone(), module_info);
                 }
             }
 
@@ -147,34 +141,38 @@ fn get_files_from_glob(pattern: &str) -> Result<Vec<PathBuf>> {
 /// Recursively find all transitive dependencies starting from main files
 fn find_transitive_dependencies(
     main_files: &[PathBuf],
-    module_to_file: &HashMap<String, PathBuf>,
-) -> Result<Vec<PathBuf>> {
-    let mut visited_files = std::collections::HashSet::new();
-    let mut files_to_process = main_files.to_vec();
-    let mut all_required_files = Vec::new();
+    module_to_info: &HashMap<String, ModuleInfo>,
+) -> Result<Vec<ModuleInfo>> {
+    let mut visited_modules = std::collections::HashSet::new();
+    let mut modules_to_process = Vec::new();
+    let mut all_required_modules = Vec::new();
 
-    while let Some(file_path) = files_to_process.pop() {
-        if visited_files.contains(&file_path) {
+    // Start with main files - we need to find their module names first
+    for file_path in main_files {
+        if let Ok(module_info) = extract_info_from_file(file_path) {
+            modules_to_process.push(module_info);
+        }
+    }
+
+    while let Some(module) = modules_to_process.pop() {
+        if visited_modules.contains(&module.name) {
             continue;
         }
 
-        visited_files.insert(file_path.clone());
-        all_required_files.push(file_path.clone());
+        visited_modules.insert(module.name.clone());
+        all_required_modules.push(module.clone());
 
-        // Extract imports from this file
-        let module = extract_info_from_file(&file_path)?;
-
-        // For each import, find the corresponding file and add it to processing queue
-        for import in module.imports {
-            if let Some(dependency_file) = module_to_file.get(&import) {
-                if !visited_files.contains(dependency_file) {
-                    files_to_process.push(dependency_file.clone());
+        // For each import, find the corresponding module and add it to processing queue
+        for import in &module.imports {
+            if let Some(dependency_module) = module_to_info.get(import) {
+                if !visited_modules.contains(&dependency_module.name) {
+                    modules_to_process.push(dependency_module.clone());
                 }
             }
         }
     }
 
-    Ok(all_required_files)
+    Ok(all_required_modules)
 }
 
 fn extract_info_from_file(path: &PathBuf) -> Result<ModuleInfo> {
