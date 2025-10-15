@@ -15,7 +15,12 @@ use crate::{
 
 use import_parsing::parse_purescript_file;
 
-pub fn execute(include_test_sources: bool, build: bool, verbose: bool) -> Result<()> {
+pub fn execute(
+    include_test_sources: bool,
+    build: bool,
+    compiler_args: Vec<String>,
+    verbose: bool,
+) -> Result<()> {
     if verbose {
         println!("{} Generating source globs from src", "→".cyan());
     }
@@ -32,7 +37,7 @@ pub fn execute(include_test_sources: bool, build: bool, verbose: bool) -> Result
             .iter()
             .map(|m| m.file_path.to_string_lossy().to_string())
             .collect::<Vec<_>>();
-        execute_compiler(&sources, &config.output_dir(), verbose)?;
+        execute_compiler(&sources, &config.output_dir(), compiler_args, verbose)?;
     } else {
         println!(
             "{}",

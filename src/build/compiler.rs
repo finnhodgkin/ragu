@@ -3,12 +3,20 @@ use colored::Colorize;
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::process::{self, Command};
+use sysinfo::System;
 
 /// Execute the purs compiler with streaming output
-pub fn execute_compiler(sources: &[String], output_dir: &PathBuf, verbose: bool) -> Result<()> {
+pub fn execute_compiler(
+    sources: &[String],
+    output_dir: &PathBuf,
+    compiler_args: Vec<String>,
+    verbose: bool,
+) -> Result<()> {
     if verbose {
         println!("{} Running purs compiler...", "→".cyan());
     }
+
+    let total_memory = get_total_memory();
 
     // Build the purs compiler command
     let mut command = Command::new("purs");
@@ -18,7 +26,19 @@ pub fn execute_compiler(sources: &[String], output_dir: &PathBuf, verbose: bool)
     command.arg("--output");
     command.arg(output_dir.to_string_lossy().to_string());
 
+    // Add RTS arguments when memory is available for it.
+    // Helps with compiler performance.
+    if total_memory > 31 {
+        command.args(["+RTS", "-A256m", "-n16m", "-RTS"]);
+    } else if total_memory > 15 {
+        command.args(["+RTS", "-A128m", "-n8m", "-RTS"]);
+    }
+
+    command.args(compiler_args);
+
     // Add all source globs as arguments
+    command.arg("--");
+
     command.args(sources);
 
     // Run the compiler with streaming output
@@ -75,4 +95,10 @@ pub fn execute_compiler(sources: &[String], output_dir: &PathBuf, verbose: bool)
     }
 
     Ok(())
+}
+
+fn get_total_memory() -> u64 {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    sys.total_memory() / 1024 / 1024 / 1024
 }

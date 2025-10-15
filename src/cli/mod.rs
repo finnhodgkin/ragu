@@ -97,6 +97,10 @@ pub enum Command {
         /// just compile the exact requirements from /src.
         #[arg(short = 'q', long)]
         quick_build: bool,
+
+        /// Arguments to pass to the node command (everything after --)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        compiler_args: Vec<String>,
     },
 
     /// Run the project
@@ -108,6 +112,10 @@ pub enum Command {
         /// Attempt run without compilation
         #[arg(short = 'q', long)]
         quick_run: bool,
+
+        /// Arguments to pass to the node command (everything after --)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        node_args: Vec<String>,
     },
 
     /// Test the project

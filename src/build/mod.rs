@@ -6,7 +6,13 @@ use colored::Colorize;
 use crate::{install::install_all_dependencies, test::TEST_SOURCES};
 
 /// Execute the build command
-pub async fn execute(watch: bool, clear: bool, test: bool, verbose: bool) -> Result<()> {
+pub async fn execute(
+    watch: bool,
+    clear: bool,
+    test: bool,
+    compiler_args: Vec<String>,
+    verbose: bool,
+) -> Result<()> {
     if verbose {
         println!("{} Build command executing", "→".cyan());
         println!("  Watch: {}", watch);
@@ -49,7 +55,7 @@ pub async fn execute(watch: bool, clear: bool, test: bool, verbose: bool) -> Res
     }
 
     // Execute the purs compiler
-    compiler::execute_compiler(&all_sources, &config.output_dir(), verbose)?;
+    compiler::execute_compiler(&all_sources, &config.output_dir(), compiler_args, verbose)?;
 
     println!("{} Build successful", "✓".green());
 

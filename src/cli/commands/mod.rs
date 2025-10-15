@@ -74,14 +74,16 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             clear,
             test,
             quick_build,
+            compiler_args,
         } => {
             if quick_build {
-                src_as_sources::execute(test, true, cli.verbose)
+                src_as_sources::execute(test, true, compiler_args, cli.verbose)
             } else {
                 tokio::runtime::Runtime::new()?.block_on(crate::build::execute(
                     watch,
                     clear,
                     test,
+                    compiler_args,
                     cli.verbose,
                 ))
             }
@@ -89,12 +91,19 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         Command::Test { quick_test } => {
             tokio::runtime::Runtime::new()?.block_on(test::execute(quick_test, cli.verbose))
         }
-        Command::Run { module, quick_run } => {
-            tokio::runtime::Runtime::new()?.block_on(run::execute(module, quick_run, cli.verbose))
-        }
+        Command::Run {
+            module,
+            quick_run,
+            node_args,
+        } => tokio::runtime::Runtime::new()?.block_on(run::execute(
+            module,
+            quick_run,
+            cli.verbose,
+            node_args,
+        )),
         Command::Sources { quick_sources } => {
             if quick_sources {
-                src_as_sources::execute(false, true, cli.verbose)
+                src_as_sources::execute(false, false, vec![], cli.verbose)
             } else {
                 crate::sources::execute_sources(cli.verbose)
             }
