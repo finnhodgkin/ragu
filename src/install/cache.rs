@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::{default, fs};
 
 use crate::registry::{get_cache_dir, PackageName};
 
@@ -50,7 +50,7 @@ impl GlobalPackageCache {
 
         let content = fs::read_to_string(&self.index_path).context("Failed to read cache index")?;
 
-        let index: Index = serde_json::from_str(&content).context("Failed to parse cache index")?;
+        let index: Index = serde_json::from_str(&content).unwrap_or(HashMap::new());
 
         Ok(index)
     }
