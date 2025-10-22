@@ -2,6 +2,7 @@ mod cache;
 mod info;
 mod install;
 mod list;
+mod output_dir;
 mod search;
 mod stats;
 mod uninstall;
@@ -88,6 +89,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
                 ))
             }
         }
+        Command::OutputDir => output_dir::execute(),
         Command::Test { quick_test } => {
             tokio::runtime::Runtime::new()?.block_on(test::execute(quick_test, cli.verbose))
         }

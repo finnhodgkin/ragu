@@ -195,6 +195,11 @@ pub enum Command {
 
     /// Analyze imports in source files and categorize them
     Imports,
+
+    /// Print the project's output directory.
+    /// For nested workspace projects, this will be the output dir for the root project.
+    #[command(alias = "o")]
+    OutputDir,
 }
 
 #[derive(Subcommand, Debug)]
