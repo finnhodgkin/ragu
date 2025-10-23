@@ -10,6 +10,7 @@ pub fn execute_compiler(
     sources: &[String],
     output_dir: &PathBuf,
     compiler_args: Vec<String>,
+    include_rts_stats: bool,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
@@ -28,10 +29,25 @@ pub fn execute_compiler(
 
     // Add RTS arguments when memory is available for it.
     // Helps with compiler performance.
-    if total_memory > 31 {
-        command.args(["+RTS", "-A256m", "-n16m", "-RTS"]);
-    } else if total_memory > 15 {
-        command.args(["+RTS", "-A128m", "-n8m", "-RTS"]);
+    if total_memory > 15 {
+        let mut rts_args = Vec::new();
+
+        // Set memory parameters based on available RAM
+        if total_memory > 31 {
+            rts_args.extend(["-A256m", "-n16m"]);
+        } else if total_memory > 15 {
+            rts_args.extend(["-A128m", "-n8m"]);
+        }
+
+        if include_rts_stats {
+            rts_args.push("-s");
+        }
+
+        if rts_args.len() > 0 {
+            rts_args.insert(0, "+RTS");
+            rts_args.push("-RTS");
+            command.args(rts_args);
+        }
     }
 
     command.args(compiler_args);

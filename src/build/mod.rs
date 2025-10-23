@@ -2,6 +2,7 @@ pub mod compiler;
 
 use anyhow::{Context, Result};
 use colored::Colorize;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{install::install_all_dependencies, test::TEST_SOURCES};
 
@@ -11,6 +12,7 @@ pub async fn execute(
     clear: bool,
     test: bool,
     compiler_args: Vec<String>,
+    include_rts_stats: bool,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
@@ -55,8 +57,27 @@ pub async fn execute(
         all_sources.push(TEST_SOURCES.to_string());
     }
 
+    // Remove any sources that don't contain any .purs files
+    all_sources = all_sources
+        .into_par_iter()
+        .filter(|source| {
+            let files = glob::glob(source);
+            if let Ok(files) = files {
+                files.peekable().peek().is_some()
+            } else {
+                false
+            }
+        })
+        .collect();
+
     // Execute the purs compiler
-    compiler::execute_compiler(&all_sources, &config.output_dir(), compiler_args, verbose)?;
+    compiler::execute_compiler(
+        &all_sources,
+        &config.output_dir(),
+        compiler_args,
+        include_rts_stats,
+        verbose,
+    )?;
 
     println!("{} Build successful", "✓".green());
 

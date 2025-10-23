@@ -19,6 +19,7 @@ pub fn execute(
     include_test_sources: bool,
     build: bool,
     compiler_args: Vec<String>,
+    include_rts_stats: bool,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
@@ -37,7 +38,13 @@ pub fn execute(
             .iter()
             .map(|m| m.file_path.to_string_lossy().to_string())
             .collect::<Vec<_>>();
-        execute_compiler(&sources, &config.output_dir(), compiler_args, verbose)?;
+        execute_compiler(
+            &sources,
+            &config.output_dir(),
+            compiler_args,
+            include_rts_stats,
+            verbose,
+        )?;
     } else {
         println!(
             "{}",

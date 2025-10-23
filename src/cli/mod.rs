@@ -17,6 +17,10 @@ pub struct Cli {
     #[arg(short = 'v', long, global = true)]
     pub verbose: bool,
 
+    /// Include RTS statistics in the compiler output
+    #[arg(long, global = true)]
+    pub include_rts_stats: bool,
+
     #[command(subcommand)]
     pub command: Command,
 }

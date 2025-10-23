@@ -29,7 +29,7 @@ pub async fn execute(skip_compilation: bool, verbose: bool) -> Result<()> {
         all_sources.push(sources.main_sources.clone());
         all_sources.push(TEST_SOURCES.to_string());
 
-        execute_compiler(&all_sources, &config.output_dir(), vec![], verbose)?;
+        execute_compiler(&all_sources, &config.output_dir(), vec![], false, verbose)?;
     }
 
     let output_dir = config.output_dir();

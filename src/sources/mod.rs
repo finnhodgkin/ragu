@@ -84,9 +84,23 @@ pub fn generate_sources(
         let mut direct_deps: Vec<PackageName> =
             config.all_dependencies().into_iter().cloned().collect();
         direct_deps.extend(query.all_workspace_dependencies());
+        if include_test_deps {
+            direct_deps.extend(query.all_workspace_test_dependencies());
+        }
         direct_deps
     } else {
-        config.package_dependencies().into_iter().cloned().collect()
+        let mut direct_deps: Vec<PackageName> =
+            config.package_dependencies().into_iter().cloned().collect();
+        if include_test_deps {
+            direct_deps.extend(
+                config
+                    .test_dependencies()
+                    .into_iter()
+                    .cloned()
+                    .collect::<Vec<PackageName>>(),
+            );
+        }
+        direct_deps
     };
 
     for dep_name in direct_package_dependencies {

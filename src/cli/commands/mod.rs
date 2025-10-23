@@ -78,13 +78,20 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             compiler_args,
         } => {
             if quick_build {
-                src_as_sources::execute(test, true, compiler_args, cli.verbose)
+                src_as_sources::execute(
+                    test,
+                    true,
+                    compiler_args,
+                    cli.include_rts_stats,
+                    cli.verbose,
+                )
             } else {
                 tokio::runtime::Runtime::new()?.block_on(crate::build::execute(
                     watch,
                     clear,
                     test,
                     compiler_args,
+                    cli.include_rts_stats,
                     cli.verbose,
                 ))
             }
@@ -105,7 +112,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         )),
         Command::Sources { quick_sources } => {
             if quick_sources {
-                src_as_sources::execute(false, false, vec![], cli.verbose)
+                src_as_sources::execute(false, false, vec![], false, cli.verbose)
             } else {
                 crate::sources::execute_sources(cli.verbose)
             }
