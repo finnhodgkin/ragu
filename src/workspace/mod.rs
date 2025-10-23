@@ -78,6 +78,7 @@ pub fn fetch_workspace_dependency_stats() -> Result<DependencyStats> {
         Some(package_set.clone()),
         true,
         false,
+        false,
     )?;
 
     let workspace_modules = discover_all_modules(&workspace_sources)?

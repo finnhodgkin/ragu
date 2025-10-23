@@ -29,7 +29,7 @@ pub fn execute(verbose: bool) -> Result<()> {
         crate::config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
     // Use current project config for sources since that's where dependencies are installed
-    let sources = crate::sources::generate_sources(&config, None, false, verbose)?;
+    let sources = crate::sources::generate_sources(&config, None, false, false, verbose)?;
 
     let package_modules = discover_all_modules(&sources)?
         .into_iter()

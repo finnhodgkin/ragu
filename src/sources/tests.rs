@@ -179,7 +179,7 @@ mod tests {
         let config = create_test_config(&spago_dir);
         let package_set = create_test_package_set();
 
-        let result = generate_sources(&config, Some(package_set), false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false);
 
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -196,7 +196,7 @@ mod tests {
         create_test_package_dir(&spago_dir, "prelude");
         create_test_package_dir(&spago_dir, "console");
 
-        let result = generate_sources(&config, Some(package_set), false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false);
 
         assert!(result.is_ok());
         let sources = result.unwrap();
@@ -228,7 +228,7 @@ mod tests {
         fs::create_dir_all(&main_src_dir).unwrap();
         fs::write(main_src_dir.join("Main.purs"), "module Main where").unwrap();
 
-        let result = generate_sources(&config, Some(package_set), false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false);
 
         assert!(result.is_ok());
         let sources = result.unwrap();
@@ -283,7 +283,7 @@ mod tests {
         create_test_package_dir(&spago_dir, "console");
 
         // Capture stdout to test verbose output
-        let result = generate_sources(&config, Some(package_set), false, true);
+        let result = generate_sources(&config, Some(package_set), false, false, true);
 
         assert!(result.is_ok());
         let sources = result.unwrap();
@@ -302,7 +302,7 @@ mod tests {
 
         let package_set = create_test_package_set();
 
-        let result = generate_sources(&config, Some(package_set), false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false);
 
         assert!(result.is_ok());
         let sources = result.unwrap();
@@ -319,7 +319,7 @@ mod tests {
 
         // Don't create the package directories
 
-        let result = generate_sources(&config, Some(package_set), false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false);
 
         // Should fail because packages are missing
         assert!(result.is_err());
@@ -363,7 +363,7 @@ mod tests {
         create_test_package_dir(&spago_dir, "console");
 
         // Don't create directory for the current package (test-package) since it's the main package
-        let result = generate_sources(&config, Some(package_set), false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false);
 
         assert!(result.is_ok());
         let sources = result.unwrap();

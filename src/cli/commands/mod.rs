@@ -139,8 +139,13 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             let package_set = config.package_set()?;
 
             // Generate sources
-            let sources =
-                crate::sources::generate_sources(&config, Some(package_set), false, cli.verbose)?;
+            let sources = crate::sources::generate_sources(
+                &config,
+                Some(package_set),
+                false,
+                false,
+                cli.verbose,
+            )?;
 
             // Execute modules command
             let options = crate::modules::ModulesOptions {

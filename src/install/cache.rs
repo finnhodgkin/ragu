@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::{default, fs};
 
 use crate::registry::{get_cache_dir, PackageName};
 

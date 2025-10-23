@@ -26,7 +26,7 @@ pub fn execute(
     }
 
     let config = crate::config::load_config_cwd()?;
-    let sources = generate_sources(&config, None, false, verbose)?;
+    let sources = generate_sources(&config, None, false, include_test_sources, verbose)?;
 
     let modules = discover_all_modules(sources, include_test_sources)?;
 

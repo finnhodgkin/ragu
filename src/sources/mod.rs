@@ -40,7 +40,7 @@ pub fn execute_sources(verbose: bool) -> Result<()> {
         crate::config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
     // Generate source globs for dependencies
-    let sources = generate_sources(&config, None, false, verbose)?;
+    let sources = generate_sources(&config, None, false, false, verbose)?;
 
     // Output main sources
     println!("{}", sources.main_sources);
@@ -58,6 +58,7 @@ pub fn generate_sources(
     config: &SpagoConfig,
     package_set: Option<PackageSet>,
     all: bool,
+    include_test_deps: bool,
     verbose: bool,
 ) -> Result<BuildSources> {
     let spago_dir = &config.spago_dir();
@@ -112,6 +113,11 @@ pub fn generate_sources(
         if let Some(glob) = generate_dependency_glob(&dep_name, spago_dir, &package_set, verbose)? {
             if glob.glob_pattern != main_sources {
                 dependency_globs.push(glob);
+            }
+        }
+        if include_test_deps {
+            if let Some(test_glob) = generate_local_test_dependency_glob(&dep_name, &package_set)? {
+                dependency_globs.push(test_glob);
             }
         }
     }
@@ -172,6 +178,24 @@ pub fn generate_dependency_glob(
         "Package {} not found. Couldn't generate a glob for it.",
         package_name.0
     ))
+}
+
+/// Generate a test glob pattern for a local dependency
+pub fn generate_local_test_dependency_glob(
+    package_name: &PackageName,
+    package_set: &PackageSet,
+) -> Result<Option<DependencyGlob>> {
+    if let Some(Package::Local(package)) = package_set.get(package_name) {
+        let glob_pattern = format!("{}/test/**/*.purs", package.path.display());
+
+        return Ok(Some(DependencyGlob {
+            glob_pattern,
+            local_path: package.path.clone(),
+            package_name: package_name.0.clone(),
+        }));
+    }
+
+    Ok(None)
 }
 
 /// Find the installed package directory in .spago

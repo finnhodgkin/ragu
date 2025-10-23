@@ -14,7 +14,7 @@ pub async fn execute(
     if !skip_compilation {
         let package_set = config.package_set()?;
         install_all_dependencies(&config, &package_set, false).await?;
-        let sources = crate::sources::generate_sources(&config, None, false, verbose)?;
+        let sources = crate::sources::generate_sources(&config, None, false, false, verbose)?;
         let mut all_sources = sources
             .dependency_globs
             .iter()

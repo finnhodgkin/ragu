@@ -28,7 +28,8 @@ pub async fn execute(
     install_all_dependencies(&config, &package_set, test).await?;
 
     // Generate source globs for dependencies
-    let sources = crate::sources::generate_sources(&config, Some(package_set), false, verbose)?;
+    let sources =
+        crate::sources::generate_sources(&config, Some(package_set), false, true, verbose)?;
 
     if verbose {
         println!(
