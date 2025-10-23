@@ -115,7 +115,10 @@ pub fn generate_sources(
                 dependency_globs.push(glob);
             }
         }
-        if include_test_deps {
+
+        // When running test commands from the workspace root,
+        // we should build all local module test dependencies as well
+        if include_test_deps && config.is_workspace_root() {
             if let Some(test_glob) = generate_local_test_dependency_glob(&dep_name, &package_set)? {
                 dependency_globs.push(test_glob);
             }
