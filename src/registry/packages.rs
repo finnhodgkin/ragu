@@ -155,13 +155,22 @@ impl<'a> PackageQuery<'a> {
 
         let all_local_packages = query.local_packages();
         let mut found_circular = false;
+        let mut seen_chains = HashSet::new();
 
         for package in all_local_packages {
             if let Some(circular_chain) = query.find_circular_dependency_chain(&package.name) {
-                found_circular = true;
-                println!("⚠️  Circular dependency detected:");
-                println!("   Chain: {}", circular_chain.join(" → "));
-                println!("   This creates a loop where packages depend on each other in a cycle.");
+                // Create a normalized version of the chain to avoid duplicates
+                let normalized_chain = Self::normalize_circular_chain(&circular_chain);
+
+                if !seen_chains.contains(&normalized_chain) {
+                    seen_chains.insert(normalized_chain);
+                    found_circular = true;
+                    println!("⚠️  Circular dependency detected:");
+                    println!("   Chain: {}", circular_chain.join(" → "));
+                    println!(
+                        "   This creates a loop where packages depend on each other in a cycle."
+                    );
+                }
             }
         }
 
@@ -170,6 +179,40 @@ impl<'a> PackageQuery<'a> {
         }
 
         Ok(())
+    }
+
+    /// Normalize a circular dependency chain to avoid duplicates
+    /// This creates a canonical representation by rotating the chain to start with the lexicographically smallest package
+    fn normalize_circular_chain(chain: &[String]) -> Vec<String> {
+        if chain.is_empty() {
+            return vec![];
+        }
+
+        // For circular dependencies, we need to find the cycle part (excluding the last duplicate)
+        let cycle = if chain.len() > 1 && chain.first() == chain.last() {
+            &chain[..chain.len() - 1]
+        } else {
+            chain
+        };
+
+        // Find the lexicographically smallest package in the cycle
+        let min_index = cycle
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, package)| *package)
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+
+        // Rotate the cycle to start with the smallest package
+        let mut normalized = cycle[min_index..].to_vec();
+        normalized.extend_from_slice(&cycle[..min_index]);
+
+        // Add the duplicate at the end to complete the cycle
+        if !normalized.is_empty() {
+            normalized.push(normalized[0].clone());
+        }
+
+        normalized
     }
 
     /// Find a circular dependency chain starting from a package
@@ -285,6 +328,45 @@ mod tests {
 
     use super::*;
     use crate::registry::types::{Package, PackageSetPackage};
+
+    #[test]
+    fn test_normalize_circular_chain() {
+        // Test with a simple circular dependency
+        let chain1 = vec![
+            "package-a".to_string(),
+            "package-b".to_string(),
+            "package-a".to_string(),
+        ];
+        let normalized1 = PackageQuery::normalize_circular_chain(&chain1);
+        assert_eq!(normalized1, vec!["package-a", "package-b", "package-a"]);
+
+        // Test with a different starting point (should normalize to the same result)
+        let chain2 = vec![
+            "package-b".to_string(),
+            "package-a".to_string(),
+            "package-b".to_string(),
+        ];
+        let normalized2 = PackageQuery::normalize_circular_chain(&chain2);
+        assert_eq!(normalized2, vec!["package-a", "package-b", "package-a"]);
+
+        // Test with lexicographically smallest package in the middle
+        let chain3 = vec![
+            "package-z".to_string(),
+            "package-a".to_string(),
+            "package-m".to_string(),
+            "package-z".to_string(),
+        ];
+        let normalized3 = PackageQuery::normalize_circular_chain(&chain3);
+        assert_eq!(
+            normalized3,
+            vec!["package-a", "package-m", "package-z", "package-a"]
+        );
+
+        // Test with empty chain
+        let chain4 = vec![];
+        let normalized4 = PackageQuery::normalize_circular_chain(&chain4);
+        assert_eq!(normalized4, vec![] as Vec<String>);
+    }
 
     fn create_test_package_set() -> PackageSet {
         let mut set = HashMap::new();
