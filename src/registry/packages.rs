@@ -148,7 +148,7 @@ impl<'a> PackageQuery<'a> {
     }
 
     /// Identify circular dependency chains
-    pub fn check_circular_dependencies() -> Result<()> {
+    pub fn check_circular_dependencies() -> Result<bool> {
         let config = load_config_cwd()?;
         let package_set = config.package_set()?;
         let query = PackageQuery::new(&package_set);
@@ -178,7 +178,7 @@ impl<'a> PackageQuery<'a> {
             println!("🎉 No circular dependencies found");
         }
 
-        Ok(())
+        Ok(found_circular)
     }
 
     /// Normalize a circular dependency chain to avoid duplicates

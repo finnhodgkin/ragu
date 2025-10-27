@@ -23,7 +23,11 @@ pub fn execute_local_packages() -> Result<()> {
 
 /// Check for circular dependencies in the workspace
 pub fn check_circular_dependencies() -> Result<()> {
-    PackageQuery::check_circular_dependencies()
+    let found_circular = PackageQuery::check_circular_dependencies()?;
+    if found_circular {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 pub fn check_deps(
@@ -50,6 +54,13 @@ pub fn check_deps(
         } else {
             display_dependency_stats(&package.name, &stats, commands_only, broken_only);
         }
+    }
+
+    // If we're not fixing dependencies and there are any issues, exit with an error
+    if !fix
+        && (stats.not_found.len() > 0 || stats.to_install.len() > 0 || stats.to_uninstall.len() > 0)
+    {
+        std::process::exit(1);
     }
     Ok(())
 }
