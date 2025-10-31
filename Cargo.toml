@@ -1,6 +1,6 @@
 [package]
 name = "ragu"
-version = "0.1.14"
+version = "0.1.16"
 edition = "2021"
 repository = "https://github.com/finnhodgkin/ragu"
 

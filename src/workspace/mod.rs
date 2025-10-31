@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use colored::Colorize;
 
 use crate::config::{add_packages_to_config, load_config_cwd, remove_packages_from_config};
 use crate::imports::extract_imports_from_sources;
@@ -44,6 +45,7 @@ pub fn check_deps(
     if let Some(package) = package {
         let package = PackageName::new(&package);
         display_dependency_stats(&package, &stats, commands_only, broken_only);
+        display_fix_instructions(Some(&package), &stats);
         return Ok(());
     }
 
@@ -56,11 +58,17 @@ pub fn check_deps(
         }
     }
 
+    let has_issues =
+        stats.not_found.len() > 0 || stats.to_install.len() > 0 || stats.to_uninstall.len() > 0;
+
     // If we're not fixing dependencies and there are any issues, exit with an error
-    if !fix
-        && (stats.not_found.len() > 0 || stats.to_install.len() > 0 || stats.to_uninstall.len() > 0)
-    {
+    if !fix && has_issues {
+        display_fix_instructions(None, &stats);
         std::process::exit(1);
+    } else if fix && has_issues {
+        println!("{}", "Fixing dependencies...".green());
+    } else {
+        println!("{}", "No issues detected.".green());
     }
     Ok(())
 }
@@ -167,7 +175,8 @@ pub fn display_dependency_stats(
     if !broken_only {
         if let Some(to_install) = to_install {
             println!(
-                "ragu install {}",
+                "{} {}",
+                "To install:".dimmed(),
                 to_install
                     .iter()
                     .map(|p| p.0.clone())
@@ -178,7 +187,8 @@ pub fn display_dependency_stats(
 
         if let Some(to_uninstall) = to_uninstall {
             println!(
-                "ragu uninstall {}",
+                "{} {}",
+                "To uninstall:".dimmed(),
                 to_uninstall
                     .iter()
                     .map(|p| p.0.clone())
@@ -198,6 +208,48 @@ pub fn display_dependency_stats(
                     .map(|p| p.clone())
                     .collect::<Vec<String>>()
                     .join(" ")
+            );
+        }
+    }
+}
+
+fn display_fix_instructions(package: Option<&PackageName>, stats: &DependencyStats) {
+    if let Some(package) = package {
+        let to_install = stats.to_install.get(package);
+        let to_uninstall = stats.to_uninstall.get(package);
+
+        // Only show commands if there are things to install or uninstall
+        let has_install = to_install.map_or(false, |set| !set.is_empty());
+        let has_uninstall = to_uninstall.map_or(false, |set| !set.is_empty());
+
+        if has_install || has_uninstall {
+            println!();
+            if let Some(to_install) = to_install {
+                if !to_install.is_empty() {
+                    let packages: Vec<String> = to_install.iter().map(|p| p.0.clone()).collect();
+                    println!("ragu install {}", packages.join(" "));
+                }
+            }
+
+            if let Some(to_uninstall) = to_uninstall {
+                if !to_uninstall.is_empty() {
+                    let packages: Vec<String> = to_uninstall.iter().map(|p| p.0.clone()).collect();
+                    println!("ragu uninstall {}", packages.join(" "));
+                }
+            }
+        }
+    } else {
+        // Check if there are any actions needed globally
+        let has_any_actions = stats.to_install.values().any(|v| !v.is_empty())
+            || stats.to_uninstall.values().any(|v| !v.is_empty());
+
+        if has_any_actions {
+            println!();
+            println!(
+                "{}{}{}",
+                "Run ".dimmed(),
+                "ragu check-deps -f",
+                " to fix all issues.".dimmed()
             );
         }
     }

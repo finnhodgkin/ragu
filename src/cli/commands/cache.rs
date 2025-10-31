@@ -3,13 +3,13 @@ use colored::Colorize;
 use std::fs;
 
 use crate::config::load_config_cwd;
-use crate::install::cache::GlobalPackageCache;
+use crate::install::cache::{GlobalPackageCache, CACHE_KEY};
 use crate::registry::{clear_cache, get_cache_dir};
 
 pub fn info() -> Result<()> {
     let cache_dir = get_cache_dir()?;
 
-    println!("\nCache Information\n");
+    println!("Cache Information\n");
     println!("  {} {}", "Location:".dimmed(), cache_dir.display());
 
     if !cache_dir.exists() {
@@ -69,7 +69,8 @@ pub fn info() -> Result<()> {
         format!("{:.2} KB", size_kb)
     };
 
-    println!("  {} {}", "Total size:".dimmed(), size_str.yellow());
+    println!("  {} {}", "Total size:".dimmed(), size_str.green());
+    println!("  {} {}", "Cache key:".dimmed(), CACHE_KEY.green());
 
     println!();
     Ok(())

@@ -66,7 +66,7 @@ async fn install_all_from_config(verbose: bool) -> Result<()> {
                     total_installed
                 );
             } else {
-                println!("{} All packages already installed", "✓".green().bold());
+                println!("{} Everything up to date", "✓".green().bold());
             }
 
             // Report cleanup

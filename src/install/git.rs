@@ -59,6 +59,7 @@ pub fn fetch_package(package: &PackageSetPackage, spago_dir: &Path) -> Result<Pa
 
     // Prune the package to only keep README and src folders
     prune_package(&package_dir)?;
+    add_version_file(&package_dir, &package.version)?;
 
     Ok(PackageInfo {
         name: package_name,
@@ -85,7 +86,8 @@ pub fn prune_package(package_dir: &Path) -> Result<()> {
             || file_name == "readme.md"
             || file_name == "README"
             || file_name == "readme"
-            || file_name == "spago.yaml";
+            || file_name == "spago.yaml"
+            || file_name == "version.txt";
 
         if !should_keep {
             if entry_path.is_dir() {
@@ -97,4 +99,16 @@ pub fn prune_package(package_dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn add_version_file(package_dir: &Path, version: &str) -> Result<()> {
+    let version_file = package_dir.join("version.txt");
+    fs::write(version_file, version).context("Failed to write version file")?;
+    Ok(())
+}
+
+pub fn git_version_matches(package: &PackageSetPackage, package_dir: &Path) -> Result<bool> {
+    let version_file = package_dir.join("version.txt");
+    let version = fs::read_to_string(version_file);
+    Ok(version.ok() == Some(package.version.clone()))
 }

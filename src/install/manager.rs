@@ -11,6 +11,7 @@ use tokio::task;
 use super::cache::{copy_dir_all, GlobalPackageCache};
 use super::git::{fetch_package, PackageInfo};
 use crate::config::SpagoConfig;
+use crate::install::git::git_version_matches;
 use crate::registry::{
     Package, PackageName, PackageQuery, PackageSet, PackageSetPackage, RegistryPackage,
 };
@@ -250,7 +251,14 @@ fn install_registry_package(
 
     // Check if already installed
     if package_dir.exists() {
-        return Ok(None); // Already installed
+        if !package_version_matches(&package, &package_dir)? {
+            println!(
+                "Package {} installed with incorrect version, reinstalling...",
+                package.name.0
+            );
+        } else {
+            return Ok(None); // Already installed
+        }
     }
 
     // Check global cache first
@@ -351,6 +359,16 @@ fn install_registry_package(
     })))
 }
 
+fn package_version_matches(package: &RegistryPackage, package_dir: &Path) -> Result<bool> {
+    let version_file = package_dir.join("purs.json");
+    let purs_json = fs::read_to_string(version_file).context("Failed to read purs.json file")?;
+    let purs_json: serde_json::Value = serde_json::from_str(&purs_json)?;
+    let version = purs_json["version"]
+        .as_str()
+        .context("Failed to get version from purs.json")?;
+    Ok(version == package.version)
+}
+
 fn install_git_package(
     package: &PackageSetPackage,
     global_cache: &GlobalPackageCache,
@@ -361,7 +379,14 @@ fn install_git_package(
 
     // Check if already installed
     if package_dir.exists() {
-        return Ok(None); // Already installed
+        if !git_version_matches(&package, &package_dir)? {
+            println!(
+                "Package {} installed with incorrect version, reinstalling...",
+                package.name.0
+            );
+        } else {
+            return Ok(None); // Already installed
+        }
     }
 
     // Check global cache first
