@@ -5,11 +5,66 @@ use std::path::PathBuf;
 use std::process::{self, Command};
 use sysinfo::System;
 
+use crate::config::PsaOptionsConfig;
+
+fn compiler_command(psa_options: &Option<PsaOptionsConfig>) -> Command {
+    match psa_options {
+        Some(options) => {
+            let mut command = Command::new("psa");
+            if options.verbose_stats {
+                command.arg("--verbose-stats");
+            }
+            if options.verbose_warnings {
+                command.arg("--verbose-warnings");
+            }
+            if options.censor_warnings {
+                command.arg("--censor-warnings");
+            }
+            if options.censor_lib {
+                command.arg("--censor-lib");
+            }
+            if options.censor_src {
+                command.arg("--censor-src");
+            }
+            if options.censor_codes.len() > 0 {
+                command.arg(format!("--censor-codes={}", options.censor_codes.join(",")));
+            }
+            if options.filter_codes.len() > 0 {
+                command.arg(format!("--filter-codes={}", options.filter_codes.join(",")));
+            }
+            if options.no_colors {
+                command.arg("--no-colors");
+            }
+            if options.no_source {
+                command.arg("--no-source");
+            }
+            if options.strict {
+                command.arg("--strict");
+            }
+            if options.stash {
+                command.arg("--stash");
+            }
+            if options.stash_file.is_some() {
+                command.arg("--stash-file");
+                command.arg(options.stash_file.clone().unwrap());
+            }
+            command.arg("compile");
+            command
+        }
+        None => {
+            let mut command = Command::new("purs");
+            command.arg("compile");
+            command
+        }
+    }
+}
+
 /// Execute the purs compiler with streaming output
 pub fn execute_compiler(
     sources: &[String],
     output_dir: &PathBuf,
     compiler_args: Vec<String>,
+    psa_options: &Option<PsaOptionsConfig>,
     include_rts_stats: bool,
     verbose: bool,
 ) -> Result<()> {
@@ -20,8 +75,7 @@ pub fn execute_compiler(
     let total_memory = get_total_memory();
 
     // Build the purs compiler command
-    let mut command = Command::new("purs");
-    command.arg("compile");
+    let mut command: Command = compiler_command(psa_options);
 
     // Use the config output directory to share workspace output
     command.arg("--output");

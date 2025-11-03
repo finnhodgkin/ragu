@@ -49,9 +49,42 @@ pub struct WorkspaceConfig {
     #[serde(default)]
     pub is_nested: bool,
     #[serde(default)]
+    pub psa_options: Option<PsaOptionsConfig>,
+    #[serde(default)]
     pub package_set: Option<PackageSetConfig>,
     #[serde(default)]
     pub extra_packages: HashMap<PackageName, ExtraPackageConfig>,
+}
+
+/// Purescript PSA options
+/// If left out, will just use the standard purs compiler without PSA
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PsaOptionsConfig {
+    #[serde(default)]
+    pub verbose_stats: bool,
+    #[serde(default)]
+    pub verbose_warnings: bool,
+    #[serde(default)]
+    pub censor_warnings: bool,
+    #[serde(default)]
+    pub censor_lib: bool,
+    #[serde(default)]
+    pub censor_src: bool,
+    #[serde(default)]
+    pub censor_codes: Vec<String>,
+    #[serde(default)]
+    pub filter_codes: Vec<String>,
+    #[serde(default)]
+    pub no_colors: bool,
+    #[serde(default)]
+    pub no_source: bool,
+    #[serde(default)]
+    pub strict: bool,
+    #[serde(default)]
+    pub stash: bool,
+    #[serde(default)]
+    pub stash_file: Option<String>,
 }
 
 /// Detailed extra package configuration

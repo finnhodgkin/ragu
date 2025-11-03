@@ -23,7 +23,14 @@ pub async fn execute(
 
         all_sources.push(sources.main_sources.clone());
 
-        execute_compiler(&all_sources, &config.output_dir(), vec![], false, verbose)?;
+        execute_compiler(
+            &all_sources,
+            &config.output_dir(),
+            vec![],
+            &config.workspace.psa_options,
+            false,
+            verbose,
+        )?;
     }
 
     let output_dir = config.output_dir();

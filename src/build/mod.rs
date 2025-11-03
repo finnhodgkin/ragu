@@ -75,6 +75,7 @@ pub async fn execute(
         &all_sources,
         &config.output_dir(),
         compiler_args,
+        &config.workspace.psa_options,
         include_rts_stats,
         verbose,
     )?;

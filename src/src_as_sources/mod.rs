@@ -42,6 +42,7 @@ pub fn execute(
             &sources,
             &config.output_dir(),
             compiler_args,
+            &config.workspace.psa_options,
             include_rts_stats,
             verbose,
         )?;
