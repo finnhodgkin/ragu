@@ -53,7 +53,15 @@ pub struct WorkspaceConfig {
     #[serde(default)]
     pub package_set: Option<PackageSetConfig>,
     #[serde(default)]
+    pub build_opts: Option<BuildOptsConfig>,
+    #[serde(default)]
     pub extra_packages: HashMap<PackageName, ExtraPackageConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildOptsConfig {
+    #[serde(default)]
+    pub output: Option<String>,
 }
 
 /// Purescript PSA options
@@ -176,7 +184,13 @@ impl SpagoConfig {
     }
 
     pub fn output_dir(&self) -> PathBuf {
-        self.workspace_root.join("output")
+        match &self.workspace.build_opts {
+            Some(BuildOptsConfig {
+                output: Some(output), // Using custom output path
+                ..
+            }) => self.workspace_root.join(output.clone()),
+            _ => self.workspace_root.join("output"),
+        }
     }
 
     pub fn is_workspace_root(&self) -> bool {
