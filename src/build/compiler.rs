@@ -8,8 +8,9 @@ use sysinfo::System;
 use crate::config::PsaOptionsConfig;
 
 fn compiler_command(psa_options: &Option<PsaOptionsConfig>) -> Command {
+    let psa_available = which::which("psa").is_ok();
     match psa_options {
-        Some(options) => {
+        Some(options) if psa_available => {
             let mut command = Command::new("psa");
             if options.verbose_stats {
                 command.arg("--verbose-stats");
@@ -48,10 +49,9 @@ fn compiler_command(psa_options: &Option<PsaOptionsConfig>) -> Command {
                 command.arg("--stash-file");
                 command.arg(options.stash_file.clone().unwrap());
             }
-            command.arg("compile");
             command
         }
-        None => {
+        _ => {
             let mut command = Command::new("purs");
             command.arg("compile");
             command
