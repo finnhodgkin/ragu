@@ -111,6 +111,9 @@ pub fn execute_compiler(
 
     command.args(sources);
 
+    // Check if we're using psa (which flips stdout/stderr)
+    let using_psa = psa_options.is_some() && which::which("psa").is_ok();
+
     // Run the compiler with streaming output
     let mut child = command
         .stdout(std::process::Stdio::piped())
@@ -119,12 +122,18 @@ pub fn execute_compiler(
         .context("Failed to start purs compiler")?;
 
     // Stream stdout and stderr concurrently using threads
+    // Note: psa flips stdout/stderr, so we need to swap them when using psa
     let stdout_thread = if let Some(stdout) = child.stdout.take() {
         let stdout_reader = std::io::BufReader::new(stdout);
+        let use_stderr = using_psa; // psa outputs to stdout what should go to stderr
         Some(std::thread::spawn(move || {
             for line in stdout_reader.lines() {
                 if let Ok(line) = line {
-                    println!("{}", line);
+                    if use_stderr {
+                        eprintln!("{}", line);
+                    } else {
+                        println!("{}", line);
+                    }
                 }
             }
         }))
@@ -134,10 +143,15 @@ pub fn execute_compiler(
 
     let stderr_thread = if let Some(stderr) = child.stderr.take() {
         let stderr_reader = std::io::BufReader::new(stderr);
+        let use_stdout = using_psa; // psa outputs to stderr what should go to stdout
         Some(std::thread::spawn(move || {
             for line in stderr_reader.lines() {
                 if let Ok(line) = line {
-                    eprintln!("{}", line);
+                    if use_stdout {
+                        println!("{}", line);
+                    } else {
+                        eprintln!("{}", line);
+                    }
                 }
             }
         }))
