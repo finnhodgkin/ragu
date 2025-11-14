@@ -5,6 +5,9 @@ use std::path::PathBuf;
 use std::process::{self, Command};
 use sysinfo::System;
 
+use crate::build::run_from_root::{
+    map_diagnostic_paths_from_output_to_cwd, map_sources_to_output_dir,
+};
 use crate::config::PsaOptionsConfig;
 
 fn compiler_command(psa_options: &Option<PsaOptionsConfig>) -> Command {
@@ -109,13 +112,16 @@ pub fn execute_compiler(
     // Add all source globs as arguments
     command.arg("--");
 
-    command.args(sources);
+    let relative_sources = map_sources_to_output_dir(sources, output_dir)?;
+
+    command.args(relative_sources);
 
     // Check if we're using psa (which flips stdout/stderr)
     let using_psa = psa_options.is_some() && which::which("psa").is_ok();
 
     // Run the compiler with streaming output
     let mut child = command
+        .current_dir(output_dir)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -123,16 +129,22 @@ pub fn execute_compiler(
 
     // Stream stdout and stderr concurrently using threads
     // Note: psa flips stdout/stderr, so we need to swap them when using psa
+    let output_dir_clone = output_dir.clone();
     let stdout_thread = if let Some(stdout) = child.stdout.take() {
         let stdout_reader = std::io::BufReader::new(stdout);
         let use_stderr = using_psa; // psa outputs to stdout what should go to stderr
+        let output_dir_for_thread = output_dir_clone.clone();
         Some(std::thread::spawn(move || {
             for line in stdout_reader.lines() {
                 if let Ok(line) = line {
+                    // Map diagnostic paths from output-relative to CWD-relative
+                    let mapped_line =
+                        map_diagnostic_paths_from_output_to_cwd(&line, &output_dir_for_thread)
+                            .unwrap_or_else(|_| line.clone());
                     if use_stderr {
-                        eprintln!("{}", line);
+                        eprintln!("{}", mapped_line);
                     } else {
-                        println!("{}", line);
+                        println!("{}", mapped_line);
                     }
                 }
             }
@@ -144,13 +156,18 @@ pub fn execute_compiler(
     let stderr_thread = if let Some(stderr) = child.stderr.take() {
         let stderr_reader = std::io::BufReader::new(stderr);
         let use_stdout = using_psa; // psa outputs to stderr what should go to stdout
+        let output_dir_for_thread = output_dir_clone.clone();
         Some(std::thread::spawn(move || {
             for line in stderr_reader.lines() {
                 if let Ok(line) = line {
+                    // Map diagnostic paths from output-relative to CWD-relative
+                    let mapped_line =
+                        map_diagnostic_paths_from_output_to_cwd(&line, &output_dir_for_thread)
+                            .unwrap_or_else(|_| line.clone());
                     if use_stdout {
-                        println!("{}", line);
+                        println!("{}", mapped_line);
                     } else {
-                        eprintln!("{}", line);
+                        eprintln!("{}", mapped_line);
                     }
                 }
             }

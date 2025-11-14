@@ -1,6 +1,6 @@
 [package]
 name = "ragu"
-version = "0.1.19"
+version = "0.1.20"
 edition = "2021"
 repository = "https://github.com/finnhodgkin/ragu"
 
@@ -32,6 +32,8 @@ rayon = "1.8"
 nom = "7.1"
 sysinfo = "0.37"
 which = "8.0"
+pathdiff = "0.2"
+regex = "1.10"
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

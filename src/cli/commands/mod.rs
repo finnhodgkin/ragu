@@ -73,13 +73,13 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         Command::Build {
             watch,
             clear,
-            test,
+            exclude_test_deps,
             quick_build,
             compiler_args,
         } => {
             if quick_build {
                 src_as_sources::execute(
-                    test,
+                    !exclude_test_deps,
                     true,
                     compiler_args,
                     cli.include_rts_stats,
@@ -89,7 +89,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
                 tokio::runtime::Runtime::new()?.block_on(crate::build::execute(
                     watch,
                     clear,
-                    test,
+                    !exclude_test_deps,
                     compiler_args,
                     cli.include_rts_stats,
                     cli.verbose,

@@ -1,4 +1,5 @@
 pub mod compiler;
+pub mod run_from_root;
 
 use anyhow::{Context, Result};
 use colored::Colorize;

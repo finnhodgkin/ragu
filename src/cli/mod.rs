@@ -92,9 +92,9 @@ pub enum Command {
         #[arg(long)]
         clear: bool,
 
-        /// Test the project
+        /// Exclude test dependencies
         #[arg(short = 't', long)]
-        test: bool,
+        exclude_test_deps: bool,
 
         /// Only build the exact project sources.
         /// Rather than compiling all potential depedency globs,
