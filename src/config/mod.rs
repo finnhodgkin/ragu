@@ -7,6 +7,7 @@ pub use types::{
 };
 pub use update::{add_packages_to_config, remove_packages_from_config};
 pub use validation::{validate_config, validate_transitive_deps};
+pub mod run_validate;
 
 use anyhow::{Context, Result};
 use std::path::Path;

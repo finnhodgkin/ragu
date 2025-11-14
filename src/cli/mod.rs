@@ -1,8 +1,6 @@
-mod commands;
+pub mod execute_command;
 
 use clap::{Parser, Subcommand};
-
-pub use commands::execute_command;
 
 /// 🍝 Ragu - A rust port of the popular PureScript package manager
 #[derive(Parser, Debug)]

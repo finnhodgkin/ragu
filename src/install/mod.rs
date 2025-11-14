@@ -5,6 +5,8 @@ mod manager;
 
 pub use cleanup::cleanup_unused_packages;
 pub use manager::{InstallManager, InstallResult};
+pub mod command;
+pub mod uninstall;
 
 use anyhow::Result;
 

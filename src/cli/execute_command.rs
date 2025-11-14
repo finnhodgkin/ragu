@@ -1,28 +1,21 @@
-mod cache;
-mod info;
-mod install;
-mod list;
-mod output_dir;
-mod search;
-mod stats;
-mod uninstall;
-mod validate;
-
 use anyhow::{Context, Result};
 use colored::Colorize;
 
 use crate::cli::{CacheAction, Cli, Command};
 use crate::registry::{PackageName, PackageQuery};
-use crate::{imports, init, run, src_as_sources, test, workspace};
+use crate::{
+    cache, config, imports, init, install, package_info, package_sets, print_output, run,
+    src_as_sources, test, workspace,
+};
 
 /// Execute the CLI command
-pub fn execute_command(cli: Cli) -> Result<()> {
+pub fn execute(cli: Cli) -> Result<()> {
     if cli.verbose {
         println!("{} Verbose mode enabled\n", "→".cyan());
     }
 
     match cli.command {
-        Command::List { all } => list::execute(all, cli.force_refresh),
+        Command::List { all } => package_sets::list::execute(all, cli.force_refresh),
         Command::Info {
             package,
             deps,
@@ -30,11 +23,11 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             reverse,
             only_workspace,
         } => {
-            let config = crate::config::load_config_cwd()
-                .context("Failed to load spago.yaml configuration")?;
+            let config =
+                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
             let package_set = config.package_set()?;
             let query = PackageQuery::new(&package_set);
-            info::execute(
+            package_info::info::execute(
                 &query,
                 &PackageName::new(&package),
                 deps,
@@ -44,27 +37,27 @@ pub fn execute_command(cli: Cli) -> Result<()> {
             )
         }
         Command::Search { query, details } => {
-            let config = crate::config::load_config_cwd()
-                .context("Failed to load spago.yaml configuration")?;
+            let config =
+                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
             let package_set = config.package_set()?;
             let pkg_query = PackageQuery::new(&package_set);
-            search::execute(&pkg_query, &query, details)
+            package_info::search::execute(&pkg_query, &query, details)
         }
         Command::Install { packages } => {
-            let config = crate::config::load_config_cwd()
-                .context("Failed to load spago.yaml configuration")?;
+            let config =
+                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
             let package_set = config.package_set()?;
-            tokio::runtime::Runtime::new()?.block_on(install::execute(
+            tokio::runtime::Runtime::new()?.block_on(install::command::execute(
                 &packages,
                 &package_set,
                 cli.verbose,
             ))
         }
         Command::Uninstall { packages } => {
-            let config = crate::config::load_config_cwd()
-                .context("Failed to load spago.yaml configuration")?;
+            let config =
+                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
             let package_set = config.package_set()?;
-            tokio::runtime::Runtime::new()?.block_on(uninstall::execute(
+            tokio::runtime::Runtime::new()?.block_on(install::uninstall::execute(
                 packages.iter().map(|p| PackageName::new(p)).collect(),
                 &package_set,
                 cli.verbose,
@@ -96,7 +89,7 @@ pub fn execute_command(cli: Cli) -> Result<()> {
                 ))
             }
         }
-        Command::OutputDir => output_dir::execute(),
+        Command::OutputDir => print_output::execute(),
         Command::Test { quick_test } => {
             tokio::runtime::Runtime::new()?.block_on(test::execute(quick_test, cli.verbose))
         }
@@ -123,25 +116,25 @@ pub fn execute_command(cli: Cli) -> Result<()> {
         },
         Command::Stats => {
             // Load spago.yaml configuration
-            let config = crate::config::load_config_cwd()
-                .context("Failed to load spago.yaml configuration")?;
+            let config =
+                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
             let package_set = config.package_set()?;
             let query = PackageQuery::new(&package_set);
-            stats::execute(&query)
+            package_sets::stats::execute(&query)
         }
         Command::Init {
             name,
             nested_package,
         } => init::execute(name, nested_package),
-        Command::Validate => validate::execute(cli.verbose),
+        Command::Validate => config::run_validate::execute(cli.verbose),
         Command::Modules {
             group_by_package,
             package,
             names_only,
         } => {
             // Load spago.yaml configuration
-            let config = crate::config::load_config_cwd()
-                .context("Failed to load spago.yaml configuration")?;
+            let config =
+                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
             let package_set = config.package_set()?;
 
