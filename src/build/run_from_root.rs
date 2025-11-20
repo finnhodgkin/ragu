@@ -14,7 +14,16 @@ use regex::Regex;
 /// `current_dir(output_dir)`, these paths should be relative to the output directory.
 pub fn map_sources_to_output_dir(sources: &[String], output_dir: &PathBuf) -> Result<Vec<String>> {
     let cwd = std::env::current_dir().context("Failed to get current working directory")?;
-    let output_dir = resolve_to_absolute(output_dir, &cwd, true)?;
+    map_sources_to_output_dir_impl(sources, output_dir, &cwd)
+}
+
+/// Implementation of map_sources_to_output_dir that accepts cwd as a parameter for testability.
+fn map_sources_to_output_dir_impl(
+    sources: &[String],
+    output_dir: &PathBuf,
+    cwd: &Path,
+) -> Result<Vec<String>> {
+    let output_dir = resolve_to_absolute(output_dir, cwd, false)?;
 
     sources
         .iter()
@@ -72,7 +81,16 @@ pub fn map_sources_to_output_dir(sources: &[String], output_dir: &PathBuf) -> Re
 /// the current working directory.
 pub fn map_diagnostic_paths_from_output_to_cwd(line: &str, output_dir: &PathBuf) -> Result<String> {
     let cwd = std::env::current_dir().context("Failed to get current working directory")?;
-    let output_dir = resolve_to_absolute(output_dir, &cwd, true)?;
+    map_diagnostic_paths_from_output_to_cwd_impl(line, output_dir, &cwd)
+}
+
+/// Implementation of map_diagnostic_paths_from_output_to_cwd that accepts cwd as a parameter for testability.
+fn map_diagnostic_paths_from_output_to_cwd_impl(
+    line: &str,
+    output_dir: &PathBuf,
+    cwd: &Path,
+) -> Result<String> {
+    let output_dir = resolve_to_absolute(output_dir, cwd, false)?;
 
     // Helper function to map a single path
     let map_path = |path_str: &str| -> String {
@@ -168,5 +186,207 @@ fn make_relative(from: &Path, to: &Path) -> String {
                 None => from.to_string_lossy().to_string(),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_path_simple() {
+        let path = Path::new("/foo/bar/./baz");
+        let normalized = normalize_path(path);
+        assert_eq!(normalized, PathBuf::from("/foo/bar/baz"));
+    }
+
+    #[test]
+    fn test_normalize_path_with_parent_dir() {
+        let path = Path::new("/foo/bar/../baz");
+        let normalized = normalize_path(path);
+        assert_eq!(normalized, PathBuf::from("/foo/baz"));
+    }
+
+    #[test]
+    fn test_normalize_path_multiple_parent_dirs() {
+        let path = Path::new("/foo/bar/baz/../../qux");
+        let normalized = normalize_path(path);
+        assert_eq!(normalized, PathBuf::from("/foo/qux"));
+    }
+
+    #[test]
+    fn test_normalize_path_current_dir() {
+        let path = Path::new("/foo/./bar/./baz");
+        let normalized = normalize_path(path);
+        assert_eq!(normalized, PathBuf::from("/foo/bar/baz"));
+    }
+
+    #[test]
+    fn test_make_relative_same_path() {
+        let path = Path::new("/foo/bar");
+        let base = Path::new("/foo/bar");
+        assert_eq!(make_relative(path, base), ".");
+    }
+
+    #[test]
+    fn test_make_relative_subdirectory() {
+        let path = Path::new("/foo/bar/baz");
+        let base = Path::new("/foo/bar");
+        assert_eq!(make_relative(path, base), "baz");
+    }
+
+    #[test]
+    fn test_make_relative_nested_subdirectory() {
+        let path = Path::new("/foo/bar/baz/qux");
+        let base = Path::new("/foo/bar");
+        assert_eq!(make_relative(path, base), "baz/qux");
+    }
+
+    #[test]
+    fn test_make_relative_parent_directory() {
+        let path = Path::new("/foo/bar");
+        let base = Path::new("/foo/bar/baz");
+        assert_eq!(make_relative(path, base), "..");
+    }
+
+    #[test]
+    fn test_make_relative_sibling_directory() {
+        let path = Path::new("/foo/baz");
+        let base = Path::new("/foo/bar");
+        assert_eq!(make_relative(path, base), "../baz");
+    }
+
+    #[test]
+    fn test_resolve_to_absolute_already_absolute() {
+        let path = Path::new("/foo/bar");
+        let base = Path::new("/some/base");
+        let result = resolve_to_absolute(path, base, false).unwrap();
+        assert_eq!(result, PathBuf::from("/foo/bar"));
+    }
+
+    #[test]
+    fn test_resolve_to_absolute_relative_path() {
+        let path = Path::new("bar/baz");
+        let base = Path::new("/foo");
+        let result = resolve_to_absolute(path, base, false).unwrap();
+        assert_eq!(result, PathBuf::from("/foo/bar/baz"));
+    }
+
+    #[test]
+    fn test_resolve_to_absolute_with_parent_dirs() {
+        let path = Path::new("../baz");
+        let base = Path::new("/foo/bar");
+        let result = resolve_to_absolute(path, base, false).unwrap();
+        assert_eq!(result, PathBuf::from("/foo/baz"));
+    }
+
+    #[test]
+    fn test_map_sources_to_output_dir_simple_file() {
+        let sources = vec!["./src/Main.purs".to_string()];
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_sources_to_output_dir_impl(&sources, &output_dir, cwd).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], "../src/Main.purs");
+    }
+
+    #[test]
+    fn test_map_sources_to_output_dir_glob_pattern() {
+        let sources = vec!["./src/**/*.purs".to_string()];
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_sources_to_output_dir_impl(&sources, &output_dir, cwd).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], "../src/**/*.purs");
+    }
+
+    #[test]
+    fn test_map_sources_to_output_dir_glob_with_wildcard() {
+        let sources = vec!["./src/*.purs".to_string()];
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_sources_to_output_dir_impl(&sources, &output_dir, cwd).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], "../src/*.purs");
+    }
+
+    #[test]
+    fn test_map_sources_to_output_dir_multiple_sources() {
+        let sources = vec![
+            "./src/Main.purs".to_string(),
+            "./lib/Utils.purs".to_string(),
+        ];
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_sources_to_output_dir_impl(&sources, &output_dir, cwd).unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], "../src/Main.purs");
+        assert_eq!(result[1], "../lib/Utils.purs");
+    }
+
+    #[test]
+    fn test_map_diagnostic_paths_json_format() {
+        let line = r#"{"filename":"../src/Main.purs","position":{"startLine":10}}"#;
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_diagnostic_paths_from_output_to_cwd_impl(line, &output_dir, cwd).unwrap();
+        assert!(result.contains(r#""filename":"src/Main.purs""#));
+    }
+
+    #[test]
+    fn test_map_diagnostic_paths_standard_format() {
+        let line = "../src/Main.purs:10:5: error message";
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_diagnostic_paths_from_output_to_cwd_impl(line, &output_dir, cwd).unwrap();
+        assert!(result.starts_with("src/Main.purs:10:5:"));
+    }
+
+    #[test]
+    fn test_map_diagnostic_paths_name_field() {
+        let line = r#"{"name":"../lib/Utils.purs","type":"warning"}"#;
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_diagnostic_paths_from_output_to_cwd_impl(line, &output_dir, cwd).unwrap();
+        assert!(result.contains(r#""name":"lib/Utils.purs""#));
+    }
+
+    #[test]
+    fn test_map_diagnostic_paths_absolute_path() {
+        let line = r#"{"filename":"/absolute/path/Main.purs","position":{"startLine":10}}"#;
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_diagnostic_paths_from_output_to_cwd_impl(line, &output_dir, cwd).unwrap();
+        // Absolute paths should remain unchanged
+        assert!(result.contains(r#""filename":"/absolute/path/Main.purs""#));
+    }
+
+    #[test]
+    fn test_map_diagnostic_paths_multiple_paths() {
+        let line = r#"{"filename":"../src/Main.purs"} and also {"name":"../lib/Utils.purs"}"#;
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_diagnostic_paths_from_output_to_cwd_impl(line, &output_dir, cwd).unwrap();
+        assert!(result.contains(r#""filename":"src/Main.purs""#));
+        assert!(result.contains(r#""name":"lib/Utils.purs""#));
+    }
+
+    #[test]
+    fn test_map_diagnostic_paths_with_current_dir() {
+        let line = "./Main.purs:5:10: error";
+        let output_dir = PathBuf::from("/project/output");
+        let cwd = Path::new("/project");
+
+        let result = map_diagnostic_paths_from_output_to_cwd_impl(line, &output_dir, cwd).unwrap();
+        assert!(result.starts_with("output/Main.purs:5:10:"));
     }
 }

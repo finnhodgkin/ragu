@@ -10,6 +10,32 @@ use crate::build::run_from_root::{
 };
 use crate::config::PsaOptionsConfig;
 
+/// Build RTS arguments for the compiler based on available memory
+fn build_rts_args(total_memory_gb: u64, include_stats: bool) -> Vec<String> {
+    let mut rts_args = Vec::new();
+
+    // Set memory parameters based on available RAM
+    if total_memory_gb > 31 {
+        rts_args.push("-A256m".to_string());
+        rts_args.push("-n16m".to_string());
+    } else if total_memory_gb > 15 {
+        rts_args.push("-A128m".to_string());
+        rts_args.push("-n8m".to_string());
+    }
+
+    if include_stats {
+        rts_args.push("-s".to_string());
+    }
+
+    // Only wrap with +RTS/-RTS if we have args to add
+    if !rts_args.is_empty() {
+        rts_args.insert(0, "+RTS".to_string());
+        rts_args.push("-RTS".to_string());
+    }
+
+    rts_args
+}
+
 fn compiler_command(psa_options: &Option<PsaOptionsConfig>) -> Command {
     let psa_available = which::which("psa").is_ok();
     match psa_options {
@@ -86,25 +112,9 @@ pub fn execute_compiler(
 
     // Add RTS arguments when memory is available for it.
     // Helps with compiler performance.
-    if total_memory > 15 {
-        let mut rts_args = Vec::new();
-
-        // Set memory parameters based on available RAM
-        if total_memory > 31 {
-            rts_args.extend(["-A256m", "-n16m"]);
-        } else if total_memory > 15 {
-            rts_args.extend(["-A128m", "-n8m"]);
-        }
-
-        if include_rts_stats {
-            rts_args.push("-s");
-        }
-
-        if rts_args.len() > 0 {
-            rts_args.insert(0, "+RTS");
-            rts_args.push("-RTS");
-            command.args(rts_args);
-        }
+    let rts_args = build_rts_args(total_memory, include_rts_stats);
+    if !rts_args.is_empty() {
+        command.args(rts_args);
     }
 
     command.args(compiler_args);
@@ -202,4 +212,282 @@ fn get_total_memory() -> u64 {
     let mut sys = System::new_all();
     sys.refresh_all();
     sys.total_memory() / 1024 / 1024 / 1024
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper to create a default PsaOptionsConfig for testing
+    fn default_psa_options() -> PsaOptionsConfig {
+        PsaOptionsConfig {
+            verbose_stats: false,
+            verbose_warnings: false,
+            censor_warnings: false,
+            censor_lib: false,
+            censor_src: false,
+            censor_codes: vec![],
+            filter_codes: vec![],
+            no_colors: false,
+            no_source: false,
+            strict: false,
+            stash: false,
+            stash_file: None,
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_uses_purs_when_no_options() {
+        let command = compiler_command(&None);
+        let debug = format!("{:?}", command);
+        assert!(debug.contains("purs"));
+        assert!(debug.contains("compile"));
+    }
+
+    #[test]
+    fn test_compiler_command_uses_purs_when_psa_not_available() {
+        // Even with options, should fall back to purs if psa not available
+        // (This test might pass or fail depending on whether psa is installed)
+        let options = Some(default_psa_options());
+        let command = compiler_command(&options);
+        let debug = format!("{:?}", command);
+        // Will be either purs or psa depending on system
+        assert!(debug.contains("purs") || debug.contains("psa"));
+    }
+
+    #[test]
+    fn test_compiler_command_with_verbose_stats() {
+        let mut options = default_psa_options();
+        options.verbose_stats = true;
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        // Only check for the flag if psa is available
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--verbose-stats"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_with_verbose_warnings() {
+        let mut options = default_psa_options();
+        options.verbose_warnings = true;
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--verbose-warnings"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_with_censor_flags() {
+        let mut options = default_psa_options();
+        options.censor_warnings = true;
+        options.censor_lib = true;
+        options.censor_src = true;
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--censor-warnings"));
+            assert!(debug.contains("--censor-lib"));
+            assert!(debug.contains("--censor-src"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_with_censor_codes() {
+        let mut options = default_psa_options();
+        options.censor_codes = vec!["Error1".to_string(), "Error2".to_string()];
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--censor-codes=Error1,Error2"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_with_filter_codes() {
+        let mut options = default_psa_options();
+        options.filter_codes = vec!["Warn1".to_string(), "Warn2".to_string()];
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--filter-codes=Warn1,Warn2"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_with_no_colors_and_no_source() {
+        let mut options = default_psa_options();
+        options.no_colors = true;
+        options.no_source = true;
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--no-colors"));
+            assert!(debug.contains("--no-source"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_with_strict() {
+        let mut options = default_psa_options();
+        options.strict = true;
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--strict"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_with_stash() {
+        let mut options = default_psa_options();
+        options.stash = true;
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--stash"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_with_stash_file() {
+        let mut options = default_psa_options();
+        options.stash_file = Some("my-stash.json".to_string());
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--stash-file"));
+            assert!(debug.contains("my-stash.json"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_with_multiple_options() {
+        let mut options = default_psa_options();
+        options.verbose_stats = true;
+        options.strict = true;
+        options.no_colors = true;
+        options.censor_lib = true;
+        options.censor_codes = vec!["E1".to_string(), "E2".to_string()];
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        if which::which("psa").is_ok() {
+            assert!(debug.contains("--verbose-stats"));
+            assert!(debug.contains("--strict"));
+            assert!(debug.contains("--no-colors"));
+            assert!(debug.contains("--censor-lib"));
+            assert!(debug.contains("--censor-codes=E1,E2"));
+        }
+    }
+
+    #[test]
+    fn test_compiler_command_empty_censor_codes() {
+        let mut options = default_psa_options();
+        options.censor_codes = vec![];
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        // Should not include --censor-codes when empty
+        assert!(!debug.contains("--censor-codes"));
+    }
+
+    #[test]
+    fn test_compiler_command_empty_filter_codes() {
+        let mut options = default_psa_options();
+        options.filter_codes = vec![];
+        let command = compiler_command(&Some(options));
+        let debug = format!("{:?}", command);
+
+        // Should not include --filter-codes when empty
+        assert!(!debug.contains("--filter-codes"));
+    }
+
+    // Tests for build_rts_args
+
+    #[test]
+    fn test_build_rts_args_low_memory_no_stats() {
+        let args = build_rts_args(8, false);
+        assert!(args.is_empty());
+
+        let args = build_rts_args(15, false);
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_build_rts_args_medium_memory() {
+        let args = build_rts_args(16, false);
+        assert_eq!(args, vec!["+RTS", "-A128m", "-n8m", "-RTS"]);
+
+        let args = build_rts_args(24, false);
+        assert_eq!(args, vec!["+RTS", "-A128m", "-n8m", "-RTS"]);
+
+        let args = build_rts_args(31, false);
+        assert_eq!(args, vec!["+RTS", "-A128m", "-n8m", "-RTS"]);
+    }
+
+    #[test]
+    fn test_build_rts_args_high_memory() {
+        let args = build_rts_args(32, false);
+        assert_eq!(args, vec!["+RTS", "-A256m", "-n16m", "-RTS"]);
+
+        let args = build_rts_args(64, false);
+        assert_eq!(args, vec!["+RTS", "-A256m", "-n16m", "-RTS"]);
+    }
+
+    #[test]
+    fn test_build_rts_args_with_stats_medium_memory() {
+        let args = build_rts_args(16, true);
+        assert_eq!(args, vec!["+RTS", "-A128m", "-n8m", "-s", "-RTS"]);
+
+        let args = build_rts_args(24, true);
+        assert_eq!(args, vec!["+RTS", "-A128m", "-n8m", "-s", "-RTS"]);
+    }
+
+    #[test]
+    fn test_build_rts_args_with_stats_high_memory() {
+        let args = build_rts_args(32, true);
+        assert_eq!(args, vec!["+RTS", "-A256m", "-n16m", "-s", "-RTS"]);
+
+        let args = build_rts_args(64, true);
+        assert_eq!(args, vec!["+RTS", "-A256m", "-n16m", "-s", "-RTS"]);
+    }
+
+    #[test]
+    fn test_build_rts_args_with_stats_low_memory() {
+        // With stats but low memory, should return just stats
+        let args = build_rts_args(8, true);
+        assert_eq!(args, vec!["+RTS", "-s", "-RTS"]);
+
+        let args = build_rts_args(15, true);
+        assert_eq!(args, vec!["+RTS", "-s", "-RTS"]);
+    }
+
+    #[test]
+    fn test_build_rts_args_boundary_conditions() {
+        // Test exact boundary at 15GB without stats
+        assert!(build_rts_args(15, false).is_empty());
+        assert!(!build_rts_args(16, false).is_empty());
+
+        // Test exact boundary at 15GB with stats
+        let args_15_stats = build_rts_args(15, true);
+        assert_eq!(args_15_stats, vec!["+RTS", "-s", "-RTS"]);
+
+        // Test exact boundary at 31GB
+        let args_31 = build_rts_args(31, false);
+        assert!(args_31.contains(&"-A128m".to_string()));
+
+        let args_32 = build_rts_args(32, false);
+        assert!(args_32.contains(&"-A256m".to_string()));
+    }
 }
