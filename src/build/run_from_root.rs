@@ -12,18 +12,21 @@ use regex::Regex;
 /// The function handles both file paths and glob patterns. For glob patterns, it preserves
 /// the glob syntax while adjusting the base path. Since the compiler runs with
 /// `current_dir(output_dir)`, these paths should be relative to the output directory.
-pub fn map_sources_to_output_dir(sources: &[String], output_dir: &PathBuf) -> Result<Vec<String>> {
+pub fn map_sources_to_output_dir(
+    sources: &[String],
+    workspace_root: &PathBuf,
+) -> Result<Vec<String>> {
     let cwd = std::env::current_dir().context("Failed to get current working directory")?;
-    map_sources_to_output_dir_impl(sources, output_dir, &cwd)
+    map_sources_to_output_dir_impl(sources, workspace_root, &cwd)
 }
 
 /// Implementation of map_sources_to_output_dir that accepts cwd as a parameter for testability.
 fn map_sources_to_output_dir_impl(
     sources: &[String],
-    output_dir: &PathBuf,
+    workspace_root: &PathBuf,
     cwd: &Path,
 ) -> Result<Vec<String>> {
-    let output_dir = resolve_to_absolute(output_dir, cwd, false)?;
+    let output_dir = resolve_to_absolute(workspace_root, cwd, false)?;
 
     sources
         .iter()
@@ -79,18 +82,21 @@ fn map_sources_to_output_dir_impl(
 /// JSON format like `"filename":"path"`, standard format like `path:line:col:`, etc.)
 /// and converts them from being relative to the output directory to being relative to
 /// the current working directory.
-pub fn map_diagnostic_paths_from_output_to_cwd(line: &str, output_dir: &PathBuf) -> Result<String> {
+pub fn map_diagnostic_paths_from_output_to_cwd(
+    line: &str,
+    workspace_root: &PathBuf,
+) -> Result<String> {
     let cwd = std::env::current_dir().context("Failed to get current working directory")?;
-    map_diagnostic_paths_from_output_to_cwd_impl(line, output_dir, &cwd)
+    map_diagnostic_paths_from_output_to_cwd_impl(line, workspace_root, &cwd)
 }
 
 /// Implementation of map_diagnostic_paths_from_output_to_cwd that accepts cwd as a parameter for testability.
 fn map_diagnostic_paths_from_output_to_cwd_impl(
     line: &str,
-    output_dir: &PathBuf,
+    workspace_root: &PathBuf,
     cwd: &Path,
 ) -> Result<String> {
-    let output_dir = resolve_to_absolute(output_dir, cwd, false)?;
+    let output_dir = resolve_to_absolute(workspace_root, cwd, false)?;
 
     // Helper function to map a single path
     let map_path = |path_str: &str| -> String {

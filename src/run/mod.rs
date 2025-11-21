@@ -26,6 +26,7 @@ pub async fn execute(
         execute_compiler(
             &all_sources,
             &config.output_dir(),
+            &config.workspace_root,
             vec![],
             &config.workspace.psa_options,
             false,

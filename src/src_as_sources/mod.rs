@@ -41,6 +41,7 @@ pub fn execute(
         execute_compiler(
             &sources,
             &config.output_dir(),
+            &config.workspace_root,
             compiler_args,
             &config.workspace.psa_options,
             include_rts_stats,

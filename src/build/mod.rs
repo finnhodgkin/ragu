@@ -75,6 +75,7 @@ pub async fn execute(
     compiler::execute_compiler(
         &all_sources,
         &config.output_dir(),
+        &config.workspace_root,
         compiler_args,
         &config.workspace.psa_options,
         include_rts_stats,

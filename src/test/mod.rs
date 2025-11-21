@@ -32,6 +32,7 @@ pub async fn execute(skip_compilation: bool, verbose: bool) -> Result<()> {
         execute_compiler(
             &all_sources,
             &config.output_dir(),
+            &config.workspace_root,
             vec![],
             &config.workspace.psa_options,
             false,
