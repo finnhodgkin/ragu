@@ -196,7 +196,15 @@ pub enum Command {
     },
 
     /// Analyze imports in source files and categorize them
-    Imports,
+    Imports {
+        /// Show import location
+        #[arg(short = 'l', long)]
+        location: bool,
+
+        /// Filter imports by package
+        #[arg(short = 'p', long)]
+        package: Option<String>,
+    },
 
     /// Print the project's output directory.
     /// For nested workspace projects, this will be the output dir for the root project.

@@ -156,7 +156,7 @@ pub fn execute(cli: Cli) -> Result<()> {
 
             crate::modules::execute_modules_command(&config, &sources, options)
         }
-        Command::Imports => imports::execute(cli.verbose),
+        Command::Imports { location, package } => imports::execute(location, package, cli.verbose),
         Command::Workspace => workspace::execute_local_packages(),
         Command::CircularDeps => workspace::check_circular_dependencies(),
         Command::CheckDeps {

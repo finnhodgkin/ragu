@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
 use crate::modules::discover_all_modules;
 
 /// Information about an import found in source code
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ImportInfo {
     /// The module name being imported
     pub module_name: String,
@@ -20,7 +20,7 @@ pub struct ImportInfo {
 }
 
 /// Execute the imports command
-pub fn execute(verbose: bool) -> Result<()> {
+pub fn execute(location: bool, package: Option<String>, verbose: bool) -> Result<()> {
     if verbose {
         println!("{} Parsing imports from current project", "→".cyan());
     }
@@ -39,7 +39,7 @@ pub fn execute(verbose: bool) -> Result<()> {
     // Extract imports from current project's source files
     let imports = extract_imports_from_sources(&std::env::current_dir()?)?;
     // Create a map to group imports by package
-    let mut grouped_imports: HashMap<String, Vec<&ImportInfo>> = HashMap::new();
+    let mut grouped_imports: HashMap<String, HashSet<&ImportInfo>> = HashMap::new();
 
     // Group imports by package name, using "unknown" for those without a package
     for import in &imports {
@@ -47,24 +47,37 @@ pub fn execute(verbose: bool) -> Result<()> {
             .get(&import.module_name)
             .cloned()
             .unwrap_or_else(|| "unknown".to_string());
-        grouped_imports.entry(package).or_default().push(import);
+        grouped_imports.entry(package).or_default().insert(import);
     }
 
     // Sort packages and print imports
     let mut packages: Vec<_> = grouped_imports.keys().collect();
     packages.sort();
 
-    for package in packages {
-        let mut imports_in_package = grouped_imports.get(package).unwrap().to_vec();
-        imports_in_package.sort_by(|a, b| a.module_name.cmp(&b.module_name));
+    // Filter to specific package if specified
+    if let Some(package) = package {
+        packages.retain(|p| p == &&package);
+    }
 
-        for import in imports_in_package {
-            if package == "main" {
-                println!("{}, ({})", import.module_name, "current".bright_cyan());
-            } else if package == "unknown" {
-                println!("{}", import.module_name);
-            } else {
-                println!("{} ({})", import.module_name, package.dimmed());
+    for package in packages {
+        if let Some(imports_in_package) = grouped_imports.get(package) {
+            let mut seen = HashSet::new();
+            for import in imports_in_package {
+                if seen.contains(&import.module_name) {
+                    continue;
+                }
+                if package == "main" {
+                    println!("{}, ({})", import.module_name, "current".bright_cyan());
+                } else if package == "unknown" {
+                    println!("{}", import.module_name);
+                } else {
+                    println!("{} ({})", import.module_name, package.dimmed());
+                }
+                if location {
+                    println!("  {}:{}", import.file_path.dimmed(), import.line_number);
+                } else {
+                    seen.insert(&import.module_name);
+                }
             }
         }
     }
