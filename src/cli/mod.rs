@@ -1,4 +1,5 @@
 pub mod execute_command;
+mod execution_context;
 
 use clap::{Parser, Subcommand};
 

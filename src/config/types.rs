@@ -171,7 +171,8 @@ impl SpagoConfig {
         }
 
         if let Some(registry_version) = self.package_set_registry() {
-            return crate::registry::get_package_set_by_registry_version(registry_version, false).await;
+            return crate::registry::get_package_set_by_registry_version(registry_version, false)
+                .await;
         }
 
         Err(anyhow::anyhow!(

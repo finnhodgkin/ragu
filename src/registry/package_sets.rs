@@ -21,8 +21,9 @@ async fn fetch_from_github(tag: &str) -> Result<PackageSet> {
 
     println!("Fetching package set from: {}", url);
 
-    let response =
-        reqwest::get(&url).await.context("Failed to fetch package set from GitHub")?;
+    let response = reqwest::get(&url)
+        .await
+        .context("Failed to fetch package set from GitHub")?;
 
     if !response.status().is_success() {
         anyhow::bail!(

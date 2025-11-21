@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
 
 use crate::cli::{CacheAction, Cli, Command};
@@ -7,6 +7,8 @@ use crate::{
     cache, config, imports, init, install, package_info, package_sets, print_output, run,
     src_as_sources, test, workspace,
 };
+
+use super::execution_context::ExecutionContext;
 
 /// Execute the CLI command
 pub async fn execute(cli: Cli) -> Result<()> {
@@ -23,10 +25,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
             reverse,
             only_workspace,
         } => {
-            let config =
-                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set().await?;
-            let query = PackageQuery::new(&package_set);
+            let ctx = ExecutionContext::load().await?;
+            let query = PackageQuery::new(&ctx.package_set);
             package_info::info::execute(
                 &query,
                 &PackageName::new(&package),
@@ -37,25 +37,19 @@ pub async fn execute(cli: Cli) -> Result<()> {
             )
         }
         Command::Search { query, details } => {
-            let config =
-                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set().await?;
-            let pkg_query = PackageQuery::new(&package_set);
+            let ctx = ExecutionContext::load().await?;
+            let pkg_query = PackageQuery::new(&ctx.package_set);
             package_info::search::execute(&pkg_query, &query, details)
         }
         Command::Install { packages } => {
-            let config =
-                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set().await?;
-            install::command::execute(&packages, &package_set, cli.verbose).await
+            let ctx = ExecutionContext::load().await?;
+            install::command::execute(&packages, &ctx.package_set, cli.verbose).await
         }
         Command::Uninstall { packages } => {
-            let config =
-                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set().await?;
+            let ctx = ExecutionContext::load().await?;
             install::uninstall::execute(
                 packages.iter().map(|p| PackageName::new(p)).collect(),
-                &package_set,
+                &ctx.package_set,
                 cli.verbose,
             )
             .await
@@ -107,11 +101,8 @@ pub async fn execute(cli: Cli) -> Result<()> {
             CacheAction::Clear { all } => cache::clear(all).await,
         },
         Command::Stats => {
-            // Load spago.yaml configuration
-            let config =
-                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set().await?;
-            let query = PackageQuery::new(&package_set);
+            let ctx = ExecutionContext::load().await?;
+            let query = PackageQuery::new(&ctx.package_set);
             package_sets::stats::execute(&query)
         }
         Command::Init {
@@ -124,16 +115,12 @@ pub async fn execute(cli: Cli) -> Result<()> {
             package,
             names_only,
         } => {
-            // Load spago.yaml configuration
-            let config =
-                config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-
-            let package_set = config.package_set().await?;
+            let ctx = ExecutionContext::load().await?;
 
             // Generate sources
             let sources = crate::sources::generate_sources(
-                &config,
-                Some(package_set),
+                &ctx.config,
+                Some(ctx.package_set),
                 false,
                 false,
                 cli.verbose,
@@ -147,7 +134,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 names_only,
             };
 
-            crate::modules::execute_modules_command(&config, &sources, options)
+            crate::modules::execute_modules_command(&ctx.config, &sources, options)
         }
         Command::Imports { location, package } => {
             imports::execute(location, package, cli.verbose).await

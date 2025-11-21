@@ -98,7 +98,8 @@ pub async fn fetch_workspace_dependency_stats() -> Result<DependencyStats> {
         true,
         false,
         false,
-    ).await?;
+    )
+    .await?;
 
     let workspace_modules = discover_all_modules(&workspace_sources)?
         .iter()

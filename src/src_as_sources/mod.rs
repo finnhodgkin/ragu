@@ -46,7 +46,8 @@ pub async fn execute(
             &config.workspace.psa_options,
             include_rts_stats,
             verbose,
-        ).await?;
+        )
+        .await?;
     } else {
         println!(
             "{}",

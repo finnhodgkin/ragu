@@ -19,7 +19,8 @@ pub async fn execute(skip_compilation: bool, verbose: bool) -> Result<()> {
     if !skip_compilation {
         let package_set = config.package_set().await?;
         install_all_dependencies(&config, &package_set, true).await?;
-        let sources = crate::sources::generate_sources(&config, None, false, false, verbose).await?;
+        let sources =
+            crate::sources::generate_sources(&config, None, false, false, verbose).await?;
         let mut all_sources = sources
             .dependency_globs
             .iter()
@@ -37,7 +38,8 @@ pub async fn execute(skip_compilation: bool, verbose: bool) -> Result<()> {
             &config.workspace.psa_options,
             false,
             verbose,
-        ).await?;
+        )
+        .await?;
     }
 
     let output_dir = config.output_dir();

@@ -79,13 +79,16 @@ async fn fetch_registry_package_set(registry_version: &str) -> Result<PackageSet
     Ok(package_set)
 }
 
-async fn fetch_registry_package_set_from_github(registry_version: &str) -> Result<RegistryPackageSet> {
+async fn fetch_registry_package_set_from_github(
+    registry_version: &str,
+) -> Result<RegistryPackageSet> {
     let url = format!("https://raw.githubusercontent.com/purescript/registry/refs/heads/main/package-sets/{}.json", registry_version);
 
     println!("Fetching package set from: {}", url);
 
-    let response =
-        reqwest::get(&url).await.context("Failed to fetch package set from GitHub")?;
+    let response = reqwest::get(&url)
+        .await
+        .context("Failed to fetch package set from GitHub")?;
 
     if !response.status().is_success() {
         anyhow::bail!(
@@ -130,7 +133,8 @@ async fn fetch_registry_index_from_github_or_cache() -> Result<RegistryIndex> {
                 for entry in WalkDir::new(repo.workdir().unwrap())
                     .into_iter()
                     .filter_entry(|e| {
-                        !e.path().ends_with(".git") && !(e.file_name().to_str() == Some("README.md"))
+                        !e.path().ends_with(".git")
+                            && !(e.file_name().to_str() == Some("README.md"))
                     })
                     .filter_map(|e| e.ok())
                     .filter(|e| e.file_type().is_file())
@@ -176,7 +180,8 @@ async fn fetch_registry_index_from_github_or_cache() -> Result<RegistryIndex> {
                     }
                 }
                 Ok::<RegistryIndex, anyhow::Error>(RegistryIndex(registry_map))
-            }).await??;
+            })
+            .await??;
 
             // Save to cache for future use
             save_registry_index_to_cache(&registry_index)?;

@@ -75,7 +75,8 @@ pub async fn info() -> Result<()> {
 
         println!();
         Ok(())
-    }).await?
+    })
+    .await?
 }
 
 pub async fn clear(also_clear_output: bool) -> Result<()> {
@@ -105,7 +106,8 @@ pub async fn clear(also_clear_output: bool) -> Result<()> {
         println!("Cache cleared (package sets and packages)");
         println!();
         Ok(())
-    }).await?
+    })
+    .await?
 }
 
 /// Calculate the total size of a directory recursively
