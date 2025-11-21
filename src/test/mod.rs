@@ -1,4 +1,4 @@
-use std::process::{self, Command};
+use tokio::process::Command;
 
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -17,9 +17,9 @@ pub async fn execute(skip_compilation: bool, verbose: bool) -> Result<()> {
     println!();
 
     if !skip_compilation {
-        let package_set = config.package_set()?;
+        let package_set = config.package_set().await?;
         install_all_dependencies(&config, &package_set, true).await?;
-        let sources = crate::sources::generate_sources(&config, None, false, false, verbose)?;
+        let sources = crate::sources::generate_sources(&config, None, false, false, verbose).await?;
         let mut all_sources = sources
             .dependency_globs
             .iter()
@@ -37,7 +37,7 @@ pub async fn execute(skip_compilation: bool, verbose: bool) -> Result<()> {
             &config.workspace.psa_options,
             false,
             verbose,
-        )?;
+        ).await?;
     }
 
     let output_dir = config.output_dir();
@@ -58,11 +58,11 @@ pub async fn execute(skip_compilation: bool, verbose: bool) -> Result<()> {
         .stderr(std::process::Stdio::inherit())
         .spawn()?;
 
-    let test_result = test_process.wait()?;
+    let test_result = test_process.wait().await?;
     if !test_result.success() {
         println!();
         eprintln!("❌ Tests failed");
-        process::exit(1);
+        std::process::exit(1);
     } else {
         println!();
         println!("{}", "✓ Tests passed".green());

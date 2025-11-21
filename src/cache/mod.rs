@@ -6,98 +6,106 @@ use crate::config::load_config_cwd;
 use crate::install::cache::{GlobalPackageCache, CACHE_KEY};
 use crate::registry::{clear_cache, get_cache_dir};
 
-pub fn info() -> Result<()> {
-    let cache_dir = get_cache_dir()?;
+pub async fn info() -> Result<()> {
+    tokio::task::spawn_blocking(|| {
+        let cache_dir = get_cache_dir()?;
 
-    println!("Cache Information\n");
-    println!("  {} {}", "Location:".dimmed(), cache_dir.display());
+        println!("Cache Information\n");
+        println!("  {} {}", "Location:".dimmed(), cache_dir.display());
 
-    if !cache_dir.exists() {
-        println!(
-            "  {} {}",
-            "Status:".dimmed(),
-            "Empty (not created yet)".yellow()
-        );
-        return Ok(());
-    }
-
-    // Count cached package sets
-    let entries = fs::read_dir(&cache_dir)?;
-    let mut total_size = 0u64;
-
-    for entry in entries.flatten() {
-        if let Ok(metadata) = entry.metadata() {
-            if metadata.is_file() {
-                total_size += metadata.len();
-            }
+        if !cache_dir.exists() {
+            println!(
+                "  {} {}",
+                "Status:".dimmed(),
+                "Empty (not created yet)".yellow()
+            );
+            return Ok(());
         }
-    }
 
-    // Check for cached packages
-    let packages_dir = cache_dir.join("packages");
-    if packages_dir.exists() {
-        let package_entries = fs::read_dir(&packages_dir)?;
-        let mut package_count = 0;
-        let mut package_size = 0u64;
+        // Count cached package sets
+        let entries = fs::read_dir(&cache_dir)?;
+        let mut total_size = 0u64;
 
-        for entry in package_entries.flatten() {
+        for entry in entries.flatten() {
             if let Ok(metadata) = entry.metadata() {
-                if metadata.is_dir() {
-                    package_count += 1;
-                    // Calculate directory size
-                    let dir_size = calculate_directory_size(&entry.path()).unwrap_or(0);
-                    package_size += dir_size;
+                if metadata.is_file() {
+                    total_size += metadata.len();
                 }
             }
         }
 
-        if package_count > 0 {
-            println!(
-                "  {} {}",
-                "Cached packages:".dimmed(),
-                package_count.to_string().green()
-            );
-            total_size += package_size;
+        // Check for cached packages
+        let packages_dir = cache_dir.join("packages");
+        if packages_dir.exists() {
+            let package_entries = fs::read_dir(&packages_dir)?;
+            let mut package_count = 0;
+            let mut package_size = 0u64;
+
+            for entry in package_entries.flatten() {
+                if let Ok(metadata) = entry.metadata() {
+                    if metadata.is_dir() {
+                        package_count += 1;
+                        // Calculate directory size
+                        let dir_size = calculate_directory_size(&entry.path()).unwrap_or(0);
+                        package_size += dir_size;
+                    }
+                }
+            }
+
+            if package_count > 0 {
+                println!(
+                    "  {} {}",
+                    "Cached packages:".dimmed(),
+                    package_count.to_string().green()
+                );
+                total_size += package_size;
+            }
         }
-    }
 
-    let size_kb = total_size as f64 / 1024.0;
-    let size_mb = size_kb / 1024.0;
-    let size_str = if size_mb > 1.0 {
-        format!("{:.2} MB", size_mb)
-    } else {
-        format!("{:.2} KB", size_kb)
-    };
+        let size_kb = total_size as f64 / 1024.0;
+        let size_mb = size_kb / 1024.0;
+        let size_str = if size_mb > 1.0 {
+            format!("{:.2} MB", size_mb)
+        } else {
+            format!("{:.2} KB", size_kb)
+        };
 
-    println!("  {} {}", "Total size:".dimmed(), size_str.green());
-    println!("  {} {}", "Cache key:".dimmed(), CACHE_KEY.green());
+        println!("  {} {}", "Total size:".dimmed(), size_str.green());
+        println!("  {} {}", "Cache key:".dimmed(), CACHE_KEY.green());
 
-    println!();
-    Ok(())
+        println!();
+        Ok(())
+    }).await?
 }
 
-pub fn clear(also_clear_output: bool) -> Result<()> {
-    println!("\nClearing cache...");
+pub async fn clear(also_clear_output: bool) -> Result<()> {
+    tokio::task::spawn_blocking(move || {
+        println!("\nClearing cache...");
 
-    // Clear package set cache
-    clear_cache()?;
+        // Clear package set cache
+        clear_cache()?;
 
-    // Clear global package cache
-    let package_cache = GlobalPackageCache::new()?;
-    package_cache.clear_all()?;
+        // Clear global package cache
+        let package_cache = GlobalPackageCache::new()?;
+        package_cache.clear_all()?;
 
-    let config = load_config_cwd()?;
+        let config = load_config_cwd()?;
 
-    if also_clear_output {
-        // clear .spago and output directories
-        fs::remove_dir_all(config.spago_dir())?;
-        fs::remove_dir_all(config.output_dir())?;
-        println!("Output and .spago directories also cleared");
-    }
+        if also_clear_output {
+            // clear .spago and output directories
+            if config.spago_dir().exists() {
+                fs::remove_dir_all(config.spago_dir())?;
+            }
+            if config.output_dir().exists() {
+                fs::remove_dir_all(config.output_dir())?;
+            }
+            println!("Output and .spago directories also cleared");
+        }
 
-    println!("Cache cleared (package sets and packages)");
-    println!();
-    Ok(())
+        println!("Cache cleared (package sets and packages)");
+        println!();
+        Ok(())
+    }).await?
 }
 
 /// Calculate the total size of a directory recursively

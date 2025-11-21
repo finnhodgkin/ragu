@@ -171,23 +171,23 @@ mod tests {
             .contains("Package nonexistent-package not found"));
     }
 
-    #[test]
-    fn test_generate_sources_without_spago_dir() {
+    #[tokio::test]
+    async fn test_generate_sources_without_spago_dir() {
         let temp_dir = TempDir::new().unwrap();
         let spago_dir = temp_dir.path().join(".spago");
         // Don't create .spago directory
         let config = create_test_config(&spago_dir);
         let package_set = create_test_package_set();
 
-        let result = generate_sources(&config, Some(package_set), false, false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false).await;
 
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert!(error.to_string().contains("No .spago directory found"));
     }
 
-    #[test]
-    fn test_generate_sources_basic() {
+    #[tokio::test]
+    async fn test_generate_sources_basic() {
         let (_temp_dir, spago_dir) = create_test_spago_dir();
         let config = create_test_config(&spago_dir);
         let package_set = create_test_package_set();
@@ -196,7 +196,7 @@ mod tests {
         create_test_package_dir(&spago_dir, "prelude");
         create_test_package_dir(&spago_dir, "console");
 
-        let result = generate_sources(&config, Some(package_set), false, false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false).await;
 
         assert!(result.is_ok());
         let sources = result.unwrap();
@@ -214,8 +214,8 @@ mod tests {
         assert!(glob_names.contains(&"console".to_string()));
     }
 
-    #[test]
-    fn test_generate_sources_filters_main_sources() {
+    #[tokio::test]
+    async fn test_generate_sources_filters_main_sources() {
         let (_temp_dir, spago_dir) = create_test_spago_dir();
         let config = create_test_config(&spago_dir);
         let package_set = create_test_package_set();
@@ -228,7 +228,7 @@ mod tests {
         fs::create_dir_all(&main_src_dir).unwrap();
         fs::write(main_src_dir.join("Main.purs"), "module Main where").unwrap();
 
-        let result = generate_sources(&config, Some(package_set), false, false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false).await;
 
         assert!(result.is_ok());
         let sources = result.unwrap();
@@ -272,8 +272,8 @@ mod tests {
         assert_eq!(original.local_path, cloned.local_path);
     }
 
-    #[test]
-    fn test_generate_sources_verbose_output() {
+    #[tokio::test]
+    async fn test_generate_sources_verbose_output() {
         let (_temp_dir, spago_dir) = create_test_spago_dir();
         let config = create_test_config(&spago_dir);
         let package_set = create_test_package_set();
@@ -283,7 +283,7 @@ mod tests {
         create_test_package_dir(&spago_dir, "console");
 
         // Capture stdout to test verbose output
-        let result = generate_sources(&config, Some(package_set), false, false, true);
+        let result = generate_sources(&config, Some(package_set), false, false, true).await;
 
         assert!(result.is_ok());
         let sources = result.unwrap();
@@ -292,8 +292,8 @@ mod tests {
         assert!(!sources.dependency_globs.is_empty());
     }
 
-    #[test]
-    fn test_generate_sources_with_empty_dependencies() {
+    #[tokio::test]
+    async fn test_generate_sources_with_empty_dependencies() {
         let (_temp_dir, spago_dir) = create_test_spago_dir();
 
         // Create config with no dependencies
@@ -302,7 +302,7 @@ mod tests {
 
         let package_set = create_test_package_set();
 
-        let result = generate_sources(&config, Some(package_set), false, false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false).await;
 
         assert!(result.is_ok());
         let sources = result.unwrap();
@@ -311,15 +311,15 @@ mod tests {
         assert!(sources.dependency_globs.is_empty());
     }
 
-    #[test]
-    fn test_generate_sources_with_missing_package() {
+    #[tokio::test]
+    async fn test_generate_sources_with_missing_package() {
         let (_temp_dir, spago_dir) = create_test_spago_dir();
         let config = create_test_config(&spago_dir);
         let package_set = create_test_package_set();
 
         // Don't create the package directories
 
-        let result = generate_sources(&config, Some(package_set), false, false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false).await;
 
         // Should fail because packages are missing
         assert!(result.is_err());
@@ -333,8 +333,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_generate_sources_circular_dependency_does_not_include_current_package() {
+    #[tokio::test]
+    async fn test_generate_sources_circular_dependency_does_not_include_current_package() {
         let (_temp_dir, spago_dir) = create_test_spago_dir();
 
         // Create a config where the current package depends on itself (circular dependency)
@@ -363,7 +363,7 @@ mod tests {
         create_test_package_dir(&spago_dir, "console");
 
         // Don't create directory for the current package (test-package) since it's the main package
-        let result = generate_sources(&config, Some(package_set), false, false, false);
+        let result = generate_sources(&config, Some(package_set), false, false, false).await;
 
         assert!(result.is_ok());
         let sources = result.unwrap();

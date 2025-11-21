@@ -15,7 +15,7 @@ use crate::{
 
 use import_parsing::parse_purescript_file;
 
-pub fn execute(
+pub async fn execute(
     include_test_sources: bool,
     build: bool,
     compiler_args: Vec<String>,
@@ -27,7 +27,7 @@ pub fn execute(
     }
 
     let config = crate::config::load_config_cwd()?;
-    let sources = generate_sources(&config, None, false, include_test_sources, verbose)?;
+    let sources = generate_sources(&config, None, false, include_test_sources, verbose).await?;
 
     let modules = discover_all_modules(sources, include_test_sources)?;
 
@@ -46,7 +46,7 @@ pub fn execute(
             &config.workspace.psa_options,
             include_rts_stats,
             verbose,
-        )?;
+        ).await?;
     } else {
         println!(
             "{}",

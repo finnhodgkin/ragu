@@ -30,7 +30,7 @@ pub struct DependencyGlob {
 }
 
 /// Execute the sources command - outputs just the source globs for piping
-pub fn execute_sources(verbose: bool) -> Result<()> {
+pub async fn execute_sources(verbose: bool) -> Result<()> {
     if verbose {
         println!("{} Generating source globs", "→".cyan());
     }
@@ -40,7 +40,7 @@ pub fn execute_sources(verbose: bool) -> Result<()> {
         crate::config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
     // Generate source globs for dependencies
-    let sources = generate_sources(&config, None, false, false, verbose)?;
+    let sources = generate_sources(&config, None, false, false, verbose).await?;
 
     // Output main sources
     println!("{}", sources.main_sources);
@@ -54,7 +54,7 @@ pub fn execute_sources(verbose: bool) -> Result<()> {
 }
 
 /// Generate source globs for all dependencies
-pub fn generate_sources(
+pub async fn generate_sources(
     config: &SpagoConfig,
     package_set: Option<PackageSet>,
     all: bool,
@@ -70,7 +70,7 @@ pub fn generate_sources(
     }
 
     let package_set = match package_set {
-        None => config.package_set()?,
+        None => config.package_set().await?,
         Some(package_set) => package_set,
     };
 

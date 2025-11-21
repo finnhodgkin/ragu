@@ -148,9 +148,9 @@ impl<'a> PackageQuery<'a> {
     }
 
     /// Identify circular dependency chains
-    pub fn check_circular_dependencies() -> Result<bool> {
+    pub async fn check_circular_dependencies() -> Result<bool> {
         let config = load_config_cwd()?;
-        let package_set = config.package_set()?;
+        let package_set = config.package_set().await?;
         let query = PackageQuery::new(&package_set);
 
         let all_local_packages = query.local_packages();

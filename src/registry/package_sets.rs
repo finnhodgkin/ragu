@@ -16,13 +16,13 @@ use super::types::PackageSet;
 const GITHUB_RAW_URL: &str = "https://raw.githubusercontent.com/purescript/package-sets";
 
 /// Fetch a package set from GitHub by tag
-fn fetch_from_github(tag: &str) -> Result<PackageSet> {
+async fn fetch_from_github(tag: &str) -> Result<PackageSet> {
     let url = format!("{}/{}/packages.json", GITHUB_RAW_URL, tag);
 
     println!("Fetching package set from: {}", url);
 
     let response =
-        reqwest::blocking::get(&url).context("Failed to fetch package set from GitHub")?;
+        reqwest::get(&url).await.context("Failed to fetch package set from GitHub")?;
 
     if !response.status().is_success() {
         anyhow::bail!(
@@ -34,6 +34,7 @@ fn fetch_from_github(tag: &str) -> Result<PackageSet> {
 
     let package_set: PackageSet = response
         .json()
+        .await
         .map(|packages: HashMap<PackageName, PackageInSet>| {
             packages
                 .into_iter()
@@ -65,15 +66,15 @@ fn fetch_from_github(tag: &str) -> Result<PackageSet> {
 /// # Arguments
 /// * `tag` - The git tag of the package set (e.g., "psc-0.15.15-20251004")
 /// * `force_refresh` - If true, bypass cache and fetch fresh from GitHub
-pub fn get_package_set(tag: &str, force_refresh: bool) -> Result<PackageSet> {
+pub async fn get_package_set(tag: &str, force_refresh: bool) -> Result<PackageSet> {
     // Try loading from cache first (unless force refresh)
 
     let mut package_set = match load_from_cache(tag) {
         Ok(Some(cached)) if !force_refresh => cached,
-        Ok(_) => fetch_from_github(tag)?,
+        Ok(_) => fetch_from_github(tag).await?,
         Err(_) => {
             clear_cache_for_tag(tag)?;
-            fetch_from_github(tag)?
+            fetch_from_github(tag).await?
         }
     };
 
@@ -144,30 +145,32 @@ struct GitHubTag {
 }
 
 /// Fetch tags from GitHub API (without cache)
-fn fetch_tags_from_github() -> Result<Vec<String>> {
+async fn fetch_tags_from_github() -> Result<Vec<String>> {
     let url = "https://api.github.com/repos/purescript/package-sets/tags?per_page=100";
 
     println!("Fetching available tags from GitHub API...");
 
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .user_agent("spago-rust/0.1.0") // GitHub API requires a user agent
         .build()?;
 
     let response = client
         .get(url)
         .send()
+        .await
         .context("Failed to fetch tags from GitHub API")?;
 
     if !response.status().is_success() {
         anyhow::bail!(
             "Failed to fetch tags: HTTP {} - {}",
             response.status(),
-            response.text().unwrap_or_default()
+            response.text().await.unwrap_or_default()
         );
     }
 
     let tags: Vec<GitHubTag> = response
         .json()
+        .await
         .context("Failed to parse GitHub API response")?;
 
     let tag_names: Vec<String> = tags.into_iter().map(|t| t.name).collect();
@@ -180,7 +183,7 @@ fn fetch_tags_from_github() -> Result<Vec<String>> {
 /// # Arguments
 /// * `force_refresh` - If true, bypass cache and fetch fresh from GitHub
 /// * `ttl_hours` - Custom TTL in hours (None = use default 24 hours)
-pub fn list_available_tags_with_options(
+pub async fn list_available_tags_with_options(
     force_refresh: bool,
     ttl_hours: Option<i64>,
 ) -> Result<Vec<String>> {
@@ -192,7 +195,7 @@ pub fn list_available_tags_with_options(
     }
 
     // Force refresh or cache miss - fetch from GitHub
-    let tags = fetch_tags_from_github()?;
+    let tags = fetch_tags_from_github().await?;
 
     // Save to cache
     save_cached_tags(&tags)?;
@@ -201,7 +204,7 @@ pub fn list_available_tags_with_options(
 }
 
 /// List available registry versions with custom TTL or force refresh
-pub fn list_available_registry_versions_with_options(
+pub async fn list_available_registry_versions_with_options(
     force_refresh: bool,
     ttl_hours: Option<i64>,
 ) -> Result<Vec<String>> {
@@ -213,44 +216,48 @@ pub fn list_available_registry_versions_with_options(
     }
 
     // Clone registry repo to temp dir
-    let temp_dir = tempfile::tempdir()?;
-    git2::Repository::clone(
-        "https://github.com/purescript/registry.git",
-        temp_dir.path(),
-    )
-    .context("Failed to clone the registry repository to check for new registry versions")?;
+    let versions = tokio::task::spawn_blocking(move || {
+        let temp_dir = tempfile::tempdir()?;
+        git2::Repository::clone(
+            "https://github.com/purescript/registry.git",
+            temp_dir.path(),
+        )
+        .context("Failed to clone the registry repository to check for new registry versions")?;
 
-    // Look for package set files in package-sets directory
-    let package_sets_dir = temp_dir.path().join("package-sets");
-    let mut versions = Vec::new();
+        // Look for package set files in package-sets directory
+        let package_sets_dir = temp_dir.path().join("package-sets");
+        let mut versions = Vec::new();
 
-    for entry in std::fs::read_dir(package_sets_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json") {
-            if let Some(version) = path.file_stem().and_then(|s| s.to_str()) {
-                versions.push(version.to_string());
+        for entry in std::fs::read_dir(package_sets_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json") {
+                if let Some(version) = path.file_stem().and_then(|s| s.to_str()) {
+                    versions.push(version.to_string());
+                }
             }
         }
-    }
 
-    // Sort versions in descending order using semantic versioning comparison
-    versions.sort_by(|a, b| {
-        // Split version strings into numeric components
-        let a_parts: Vec<u32> = a.split('.').filter_map(|s| s.parse().ok()).collect();
-        let b_parts: Vec<u32> = b.split('.').filter_map(|s| s.parse().ok()).collect();
+        // Sort versions in descending order using semantic versioning comparison
+        versions.sort_by(|a, b| {
+            // Split version strings into numeric components
+            let a_parts: Vec<u32> = a.split('.').filter_map(|s| s.parse().ok()).collect();
+            let b_parts: Vec<u32> = b.split('.').filter_map(|s| s.parse().ok()).collect();
 
-        // Compare components from most significant to least significant
-        // This will compare all parts (major.minor.patch)
-        b_parts
-            .iter()
-            .zip(a_parts.iter())
-            .find(|(b_num, a_num)| b_num != a_num)
-            .map(|(b_num, a_num)| a_num.cmp(b_num))
-            .unwrap_or_else(|| b_parts.len().cmp(&a_parts.len()))
-    });
+            // Compare components from most significant to least significant
+            // This will compare all parts (major.minor.patch)
+            b_parts
+                .iter()
+                .zip(a_parts.iter())
+                .find(|(b_num, a_num)| b_num != a_num)
+                .map(|(b_num, a_num)| a_num.cmp(b_num))
+                .unwrap_or_else(|| b_parts.len().cmp(&a_parts.len()))
+        });
 
-    versions.reverse();
+        versions.reverse();
+        Ok::<Vec<String>, anyhow::Error>(versions)
+    })
+    .await??;
 
     // Save to cache
     save_cached_registry_versions(&versions)?;

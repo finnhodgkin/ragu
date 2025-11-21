@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
-use std::io::BufRead;
 use std::path::PathBuf;
-use std::process::{self, Command};
+use std::process::Stdio;
 use sysinfo::System;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
 
 use crate::build::run_from_root::{
     map_diagnostic_paths_from_output_to_cwd, map_sources_to_output_dir,
@@ -89,7 +90,7 @@ fn compiler_command(psa_options: &Option<PsaOptionsConfig>) -> Command {
 }
 
 /// Execute the purs compiler with streaming output
-pub fn execute_compiler(
+pub async fn execute_compiler(
     sources: &[String],
     output_dir: &PathBuf,
     workspace_root: &PathBuf,
@@ -133,29 +134,28 @@ pub fn execute_compiler(
     // Run the compiler with streaming output
     let mut child = command
         .current_dir(workspace_root)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .context("Failed to start purs compiler")?;
 
-    // Stream stdout and stderr concurrently using threads
+    // Stream stdout and stderr concurrently using tokio tasks
     // Note: psa flips stdout/stderr, so we need to swap them when using psa
-    let stdout_thread = if let Some(stdout) = child.stdout.take() {
-        let stdout_reader = std::io::BufReader::new(stdout);
+    let stdout_handle = if let Some(stdout) = child.stdout.take() {
+        let stdout_reader = BufReader::new(stdout);
         let use_stderr = using_psa; // psa outputs to stdout what should go to stderr
         let workspace_root_clone = workspace_root.clone();
-        Some(std::thread::spawn(move || {
-            for line in stdout_reader.lines() {
-                if let Ok(line) = line {
-                    // Map diagnostic paths from output-relative to CWD-relative
-                    let mapped_line =
-                        map_diagnostic_paths_from_output_to_cwd(&line, &workspace_root_clone)
-                            .unwrap_or_else(|_| line.clone());
-                    if use_stderr {
-                        eprintln!("{}", mapped_line);
-                    } else {
-                        println!("{}", mapped_line);
-                    }
+        Some(tokio::spawn(async move {
+            let mut lines = stdout_reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                // Map diagnostic paths from output-relative to CWD-relative
+                let mapped_line =
+                    map_diagnostic_paths_from_output_to_cwd(&line, &workspace_root_clone)
+                        .unwrap_or_else(|_| line.clone());
+                if use_stderr {
+                    eprintln!("{}", mapped_line);
+                } else {
+                    println!("{}", mapped_line);
                 }
             }
         }))
@@ -163,22 +163,21 @@ pub fn execute_compiler(
         None
     };
 
-    let stderr_thread = if let Some(stderr) = child.stderr.take() {
-        let stderr_reader = std::io::BufReader::new(stderr);
+    let stderr_handle = if let Some(stderr) = child.stderr.take() {
+        let stderr_reader = BufReader::new(stderr);
         let use_stdout = using_psa; // psa outputs to stderr what should go to stdout
         let workspace_root_clone = workspace_root.clone();
-        Some(std::thread::spawn(move || {
-            for line in stderr_reader.lines() {
-                if let Ok(line) = line {
-                    // Map diagnostic paths from output-relative to CWD-relative
-                    let mapped_line =
-                        map_diagnostic_paths_from_output_to_cwd(&line, &workspace_root_clone)
-                            .unwrap_or_else(|_| line.clone());
-                    if use_stdout {
-                        println!("{}", mapped_line);
-                    } else {
-                        eprintln!("{}", mapped_line);
-                    }
+        Some(tokio::spawn(async move {
+            let mut lines = stderr_reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                // Map diagnostic paths from output-relative to CWD-relative
+                let mapped_line =
+                    map_diagnostic_paths_from_output_to_cwd(&line, &workspace_root_clone)
+                        .unwrap_or_else(|_| line.clone());
+                if use_stdout {
+                    println!("{}", mapped_line);
+                } else {
+                    eprintln!("{}", mapped_line);
                 }
             }
         }))
@@ -187,19 +186,19 @@ pub fn execute_compiler(
     };
 
     // Wait for output threads to finish
-    if let Some(stdout_thread) = stdout_thread {
-        stdout_thread.join().unwrap();
+    if let Some(handle) = stdout_handle {
+        handle.await.ok();
     }
-    if let Some(stderr_thread) = stderr_thread {
-        stderr_thread.join().unwrap();
+    if let Some(handle) = stderr_handle {
+        handle.await.ok();
     }
 
     // Wait for completion
-    let status = child.wait().context("Failed to wait for purs compiler")?;
+    let status = child.wait().await.context("Failed to wait for purs compiler")?;
 
     if !status.success() {
         eprintln!("❌ Compilation failed");
-        process::exit(1);
+        std::process::exit(1);
     }
     if verbose {
         println!("  Compiled {} source files", sources.len());

@@ -1,4 +1,4 @@
-use std::process::Command;
+use tokio::process::Command;
 
 use anyhow::Result;
 
@@ -12,9 +12,9 @@ pub async fn execute(
 ) -> Result<()> {
     let config = crate::config::load_config_cwd()?;
     if !skip_compilation {
-        let package_set = config.package_set()?;
+        let package_set = config.package_set().await?;
         install_all_dependencies(&config, &package_set, false).await?;
-        let sources = crate::sources::generate_sources(&config, None, false, false, verbose)?;
+        let sources = crate::sources::generate_sources(&config, None, false, false, verbose).await?;
         let mut all_sources = sources
             .dependency_globs
             .iter()
@@ -31,7 +31,7 @@ pub async fn execute(
             &config.workspace.psa_options,
             false,
             verbose,
-        )?;
+        ).await?;
     }
 
     let output_dir = config.output_dir();
@@ -56,6 +56,6 @@ pub async fn execute(
         .stderr(std::process::Stdio::inherit())
         .spawn()?;
 
-    child.wait()?;
+    child.wait().await?;
     Ok(())
 }

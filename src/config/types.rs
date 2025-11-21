@@ -163,15 +163,15 @@ impl SpagoConfig {
             .and_then(|ps| ps.registry.as_ref().map(|registry| registry.as_str()))
     }
 
-    pub fn package_set(&self) -> Result<PackageSet> {
+    pub async fn package_set(&self) -> Result<PackageSet> {
         if let Some(url) = self.package_set_url() {
             let package_set_tag = crate::config::extract_tag_from_url(url)
                 .context("Failed to extract tag from package set URL")?;
-            return crate::registry::get_package_set(&package_set_tag, false);
+            return crate::registry::get_package_set(&package_set_tag, false).await;
         }
 
         if let Some(registry_version) = self.package_set_registry() {
-            return crate::registry::get_package_set_by_registry_version(registry_version, false);
+            return crate::registry::get_package_set_by_registry_version(registry_version, false).await;
         }
 
         Err(anyhow::anyhow!(

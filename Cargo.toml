@@ -5,7 +5,7 @@ edition = "2021"
 repository = "https://github.com/finnhodgkin/ragu"
 
 [dependencies]
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"

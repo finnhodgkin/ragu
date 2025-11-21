@@ -26,7 +26,7 @@ fn map_sources_to_output_dir_impl(
     workspace_root: &PathBuf,
     cwd: &Path,
 ) -> Result<Vec<String>> {
-    let output_dir = resolve_to_absolute(workspace_root, cwd, false)?;
+    let output_dir = resolve_to_absolute(workspace_root, cwd)?;
 
     sources
         .iter()
@@ -51,7 +51,7 @@ fn map_sources_to_output_dir_impl(
 
                 // Resolve the base directory and make it relative to output directory
                 let base_dir_path = Path::new(base_dir);
-                let base_dir = resolve_to_absolute(base_dir_path, &cwd, false)?;
+                let base_dir = resolve_to_absolute(base_dir_path, &cwd)?;
                 let base_dir_rel = make_relative(&base_dir, &output_dir);
 
                 // Reconstruct the glob pattern with the new base
@@ -69,7 +69,7 @@ fn map_sources_to_output_dir_impl(
             } else {
                 // For file paths, resolve and make relative to output directory
                 let source_path = Path::new(source);
-                let source = resolve_to_absolute(source_path, &cwd, true)?;
+                let source = resolve_to_absolute(source_path, &cwd)?;
                 Ok(make_relative(&source, &output_dir))
             }
         })
@@ -96,7 +96,7 @@ fn map_diagnostic_paths_from_output_to_cwd_impl(
     workspace_root: &PathBuf,
     cwd: &Path,
 ) -> Result<String> {
-    let output_dir = resolve_to_absolute(workspace_root, cwd, false)?;
+    let output_dir = resolve_to_absolute(workspace_root, cwd)?;
 
     // Helper function to map a single path
     let map_path = |path_str: &str| -> String {
@@ -157,20 +157,18 @@ fn normalize_path(path: &Path) -> PathBuf {
     normalized
 }
 
-/// Resolve a path to an absolute path, using canonicalize if possible,
-/// otherwise using normalization.
-fn resolve_to_absolute(path: &Path, base: &Path, use_canonicalize: bool) -> Result<PathBuf> {
-    if path.is_absolute() {
-        return Ok(path.to_path_buf());
-    }
-
-    let joined = base.join(path);
-    if use_canonicalize {
-        joined
-            .canonicalize()
-            .with_context(|| format!("Failed to canonicalize path: {}", path.display()))
+/// Resolve a path to an absolute path, attempting to canonicalize it to resolve symlinks.
+/// If the path does not exist or cannot be canonicalized, falls back to normalization.
+fn resolve_to_absolute(path: &Path, base: &Path) -> Result<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
     } else {
-        Ok(normalize_path(&joined))
+        base.join(path)
+    };
+
+    match absolute.canonicalize() {
+        Ok(canonical) => Ok(canonical),
+        Err(_) => Ok(normalize_path(&absolute)),
     }
 }
 
@@ -266,7 +264,7 @@ mod tests {
     fn test_resolve_to_absolute_already_absolute() {
         let path = Path::new("/foo/bar");
         let base = Path::new("/some/base");
-        let result = resolve_to_absolute(path, base, false).unwrap();
+        let result = resolve_to_absolute(path, base).unwrap();
         assert_eq!(result, PathBuf::from("/foo/bar"));
     }
 
@@ -274,7 +272,7 @@ mod tests {
     fn test_resolve_to_absolute_relative_path() {
         let path = Path::new("bar/baz");
         let base = Path::new("/foo");
-        let result = resolve_to_absolute(path, base, false).unwrap();
+        let result = resolve_to_absolute(path, base).unwrap();
         assert_eq!(result, PathBuf::from("/foo/bar/baz"));
     }
 
@@ -282,7 +280,7 @@ mod tests {
     fn test_resolve_to_absolute_with_parent_dirs() {
         let path = Path::new("../baz");
         let base = Path::new("/foo/bar");
-        let result = resolve_to_absolute(path, base, false).unwrap();
+        let result = resolve_to_absolute(path, base).unwrap();
         assert_eq!(result, PathBuf::from("/foo/baz"));
     }
 

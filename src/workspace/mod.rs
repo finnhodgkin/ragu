@@ -9,9 +9,9 @@ use crate::imports::extract_imports_from_sources;
 use crate::modules::discover_all_modules;
 use crate::registry::{LocalPackage, PackageName, PackageQuery};
 
-pub fn execute_local_packages() -> Result<()> {
+pub async fn execute_local_packages() -> Result<()> {
     let config = load_config_cwd()?;
-    let package_set = config.package_set()?;
+    let package_set = config.package_set().await?;
     let query = PackageQuery::new(&package_set);
 
     let all_local_packages = query.local_packages();
@@ -23,23 +23,23 @@ pub fn execute_local_packages() -> Result<()> {
 }
 
 /// Check for circular dependencies in the workspace
-pub fn check_circular_dependencies() -> Result<()> {
-    let found_circular = PackageQuery::check_circular_dependencies()?;
+pub async fn check_circular_dependencies() -> Result<()> {
+    let found_circular = PackageQuery::check_circular_dependencies().await?;
     if found_circular {
         std::process::exit(1);
     }
     Ok(())
 }
 
-pub fn check_deps(
+pub async fn check_deps(
     package: Option<String>,
     commands_only: bool,
     broken_only: bool,
     fix: bool,
 ) -> Result<()> {
-    let stats = fetch_workspace_dependency_stats()?;
+    let stats = fetch_workspace_dependency_stats().await?;
     let config = load_config_cwd()?;
-    let package_set = config.package_set()?;
+    let package_set = config.package_set().await?;
     let query = PackageQuery::new(&package_set);
 
     if let Some(package) = package {
@@ -79,9 +79,9 @@ pub struct DependencyStats {
     pub not_found: HashMap<PackageName, HashSet<String>>,
 }
 
-pub fn fetch_workspace_dependency_stats() -> Result<DependencyStats> {
+pub async fn fetch_workspace_dependency_stats() -> Result<DependencyStats> {
     let config = load_config_cwd()?;
-    let package_set = config.package_set()?;
+    let package_set = config.package_set().await?;
     let query = PackageQuery::new(&package_set);
 
     let all_local_packages = query.local_packages();
@@ -98,7 +98,7 @@ pub fn fetch_workspace_dependency_stats() -> Result<DependencyStats> {
         true,
         false,
         false,
-    )?;
+    ).await?;
 
     let workspace_modules = discover_all_modules(&workspace_sources)?
         .iter()

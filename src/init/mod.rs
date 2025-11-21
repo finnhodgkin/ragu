@@ -10,8 +10,8 @@ mod src;
 mod test;
 mod yaml;
 
-pub fn execute(name: String, is_nested_package: bool) -> Result<()> {
-    let registry_version = list_available_registry_versions_with_options(false, None)?
+pub async fn execute(name: String, is_nested_package: bool) -> Result<()> {
+    let registry_version = list_available_registry_versions_with_options(false, None).await?
         .first()
         .context("Failed to get registry version")?
         .clone();

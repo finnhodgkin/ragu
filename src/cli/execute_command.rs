@@ -9,13 +9,13 @@ use crate::{
 };
 
 /// Execute the CLI command
-pub fn execute(cli: Cli) -> Result<()> {
+pub async fn execute(cli: Cli) -> Result<()> {
     if cli.verbose {
         println!("{} Verbose mode enabled\n", "→".cyan());
     }
 
     match cli.command {
-        Command::List { all } => package_sets::list::execute(all, cli.force_refresh),
+        Command::List { all } => package_sets::list::execute(all, cli.force_refresh).await,
         Command::Info {
             package,
             deps,
@@ -25,7 +25,7 @@ pub fn execute(cli: Cli) -> Result<()> {
         } => {
             let config =
                 config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set()?;
+            let package_set = config.package_set().await?;
             let query = PackageQuery::new(&package_set);
             package_info::info::execute(
                 &query,
@@ -39,29 +39,26 @@ pub fn execute(cli: Cli) -> Result<()> {
         Command::Search { query, details } => {
             let config =
                 config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set()?;
+            let package_set = config.package_set().await?;
             let pkg_query = PackageQuery::new(&package_set);
             package_info::search::execute(&pkg_query, &query, details)
         }
         Command::Install { packages } => {
             let config =
                 config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set()?;
-            tokio::runtime::Runtime::new()?.block_on(install::command::execute(
-                &packages,
-                &package_set,
-                cli.verbose,
-            ))
+            let package_set = config.package_set().await?;
+            install::command::execute(&packages, &package_set, cli.verbose).await
         }
         Command::Uninstall { packages } => {
             let config =
                 config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set()?;
-            tokio::runtime::Runtime::new()?.block_on(install::uninstall::execute(
+            let package_set = config.package_set().await?;
+            install::uninstall::execute(
                 packages.iter().map(|p| PackageName::new(p)).collect(),
                 &package_set,
                 cli.verbose,
-            ))
+            )
+            .await
         }
         Command::Build {
             watch,
@@ -78,55 +75,50 @@ pub fn execute(cli: Cli) -> Result<()> {
                     cli.include_rts_stats,
                     cli.verbose,
                 )
+                .await
             } else {
-                tokio::runtime::Runtime::new()?.block_on(crate::build::execute(
+                crate::build::execute(
                     watch,
                     clear,
                     !exclude_test_deps,
                     compiler_args,
                     cli.include_rts_stats,
                     cli.verbose,
-                ))
+                )
+                .await
             }
         }
         Command::OutputDir => print_output::execute(),
-        Command::Test { quick_test } => {
-            tokio::runtime::Runtime::new()?.block_on(test::execute(quick_test, cli.verbose))
-        }
+        Command::Test { quick_test } => test::execute(quick_test, cli.verbose).await,
         Command::Run {
             module,
             quick_run,
             node_args,
-        } => tokio::runtime::Runtime::new()?.block_on(run::execute(
-            module,
-            quick_run,
-            cli.verbose,
-            node_args,
-        )),
+        } => run::execute(module, quick_run, cli.verbose, node_args).await,
         Command::Sources { quick_sources } => {
             if quick_sources {
-                src_as_sources::execute(false, false, vec![], false, cli.verbose)
+                src_as_sources::execute(false, false, vec![], false, cli.verbose).await
             } else {
-                crate::sources::execute_sources(cli.verbose)
+                crate::sources::execute_sources(cli.verbose).await
             }
         }
         Command::Cache { action } => match action {
-            CacheAction::Info => cache::info(),
-            CacheAction::Clear { all } => cache::clear(all),
+            CacheAction::Info => cache::info().await,
+            CacheAction::Clear { all } => cache::clear(all).await,
         },
         Command::Stats => {
             // Load spago.yaml configuration
             let config =
                 config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
-            let package_set = config.package_set()?;
+            let package_set = config.package_set().await?;
             let query = PackageQuery::new(&package_set);
             package_sets::stats::execute(&query)
         }
         Command::Init {
             name,
             nested_package,
-        } => init::execute(name, nested_package),
-        Command::Validate => config::run_validate::execute(cli.verbose),
+        } => init::execute(name, nested_package).await,
+        Command::Validate => config::run_validate::execute(cli.verbose).await,
         Command::Modules {
             group_by_package,
             package,
@@ -136,7 +128,7 @@ pub fn execute(cli: Cli) -> Result<()> {
             let config =
                 config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
-            let package_set = config.package_set()?;
+            let package_set = config.package_set().await?;
 
             // Generate sources
             let sources = crate::sources::generate_sources(
@@ -145,7 +137,8 @@ pub fn execute(cli: Cli) -> Result<()> {
                 false,
                 false,
                 cli.verbose,
-            )?;
+            )
+            .await?;
 
             // Execute modules command
             let options = crate::modules::ModulesOptions {
@@ -156,14 +149,16 @@ pub fn execute(cli: Cli) -> Result<()> {
 
             crate::modules::execute_modules_command(&config, &sources, options)
         }
-        Command::Imports { location, package } => imports::execute(location, package, cli.verbose),
-        Command::Workspace => workspace::execute_local_packages(),
-        Command::CircularDeps => workspace::check_circular_dependencies(),
+        Command::Imports { location, package } => {
+            imports::execute(location, package, cli.verbose).await
+        }
+        Command::Workspace => workspace::execute_local_packages().await,
+        Command::CircularDeps => workspace::check_circular_dependencies().await,
         Command::CheckDeps {
             package,
             commands_only,
             broken_only,
             fix,
-        } => workspace::check_deps(package, commands_only, broken_only, fix),
+        } => workspace::check_deps(package, commands_only, broken_only, fix).await,
     }
 }

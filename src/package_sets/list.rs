@@ -5,9 +5,9 @@ use crate::registry::{
     list_available_registry_versions_with_options, list_available_tags_with_options,
 };
 
-pub fn execute(show_all: bool, force_refresh: bool) -> Result<()> {
-    let tags = list_available_tags_with_options(force_refresh, None)?;
-    let registry_versions = list_available_registry_versions_with_options(force_refresh, None)?;
+pub async fn execute(show_all: bool, force_refresh: bool) -> Result<()> {
+    let tags = list_available_tags_with_options(force_refresh, None).await?;
+    let registry_versions = list_available_registry_versions_with_options(force_refresh, None).await?;
 
     println!("\n{} Available package sets:\n", "📋".bold());
 

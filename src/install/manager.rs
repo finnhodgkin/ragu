@@ -235,14 +235,22 @@ impl InstallManager {
         match package {
             Package::Local(_) => Ok(None), // No need to install local
             Package::Registry(package) => {
-                install_registry_package(package, global_cache, spago_dir)
+                install_registry_package(package, global_cache, spago_dir).await
             }
-            Package::Remote(package) => install_git_package(package, global_cache, spago_dir),
+            Package::Remote(package) => {
+                let package = package.clone();
+                let global_cache = global_cache.clone();
+                let spago_dir = spago_dir.to_path_buf();
+                task::spawn_blocking(move || {
+                    install_git_package(&package, &global_cache, &spago_dir)
+                })
+                .await?
+            }
         }
     }
 }
 
-fn install_registry_package(
+async fn install_registry_package(
     package: &RegistryPackage,
     global_cache: &GlobalPackageCache,
     spago_dir: &Path,
@@ -276,7 +284,7 @@ fn install_registry_package(
         "https://packages.registry.purescript.org/{}/{}.tar.gz",
         package.name.0, package.version
     );
-    let response = reqwest::blocking::get(&registry_tar_url)?;
+    let response = reqwest::get(&registry_tar_url).await?;
     if !response.status().is_success() {
         anyhow::bail!(
             "Failed to fetch package {} from registry: HTTP {}",
@@ -291,20 +299,24 @@ fn install_registry_package(
     ))?;
 
     // Create the package directory
-    let tar_data = response.bytes()?;
-    let gz_data = GzDecoder::new(tar_data.as_ref());
+    let tar_data = response.bytes().await?;
+    let cursor = std::io::Cursor::new(tar_data);
+    let gz_data = GzDecoder::new(cursor);
     let mut tar = tar::Archive::new(gz_data);
+
     // Extract the tar archive to a temporary directory first
     let temp_dir = tempfile::tempdir().context(format!(
         "Failed to create temporary directory for {}",
         package.name.0
     ))?;
+
     tar.unpack(temp_dir.path()).context(format!(
         "Failed to extract tar archive for {}",
         package.name.0
     ))?;
 
     // Find the single top-level directory and move its contents
+
     let entries: Vec<_> = std::fs::read_dir(temp_dir.path())
         .context(format!(
             "Failed to read extracted directory for {}",

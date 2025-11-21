@@ -18,9 +18,10 @@ mod workspace;
 
 use clap::Parser;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = cli::Cli::parse();
-    if let Err(e) = cli::execute_command::execute(cli) {
+    if let Err(e) = cli::execute_command::execute(cli).await {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }

@@ -4,7 +4,7 @@ use colored::Colorize;
 use crate::config::{load_config_cwd, validate_config, validate_transitive_deps};
 use crate::registry::PackageQuery;
 
-pub fn execute(verbose: bool) -> Result<()> {
+pub async fn execute(verbose: bool) -> Result<()> {
     if verbose {
         println!("Validating spago.yaml configuration");
     }
@@ -21,7 +21,7 @@ pub fn execute(verbose: bool) -> Result<()> {
         }
     }
 
-    let package_set = config.package_set()?;
+    let package_set = config.package_set().await?;
     let query = PackageQuery::new(&package_set);
 
     if verbose {

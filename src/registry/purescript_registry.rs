@@ -27,7 +27,7 @@ use crate::{
 /// # Arguments
 /// * `registry_version` - The registry version (e.g., "62.1.0")
 /// * `force_refresh` - If true, bypass cache and fetch fresh from GitHub
-pub fn get_package_set_by_registry_version(
+pub async fn get_package_set_by_registry_version(
     registry_version: &str,
     force_refresh: bool,
 ) -> Result<PackageSet> {
@@ -36,7 +36,7 @@ pub fn get_package_set_by_registry_version(
     let mut package_set = match load_registry_package_set_from_cache(registry_version) {
         Ok(Some(cached)) if !force_refresh => cached,
         Ok(_) => {
-            let fetched = fetch_registry_package_set(registry_version)?;
+            let fetched = fetch_registry_package_set(registry_version).await?;
             // Save to cache for future use
             save_registry_package_set_to_cache(registry_version, &fetched)?;
             fetched
@@ -44,7 +44,7 @@ pub fn get_package_set_by_registry_version(
         Err(_) => {
             // Clear cache on error
             clear_registry_package_set_cache(registry_version)?;
-            let fetched = fetch_registry_package_set(registry_version)?;
+            let fetched = fetch_registry_package_set(registry_version).await?;
             // Save to cache for future use
             save_registry_package_set_to_cache(registry_version, &fetched)?;
             fetched
@@ -63,9 +63,9 @@ pub fn get_package_set_by_registry_version(
     Ok(package_set)
 }
 
-fn fetch_registry_package_set(registry_version: &str) -> Result<PackageSet> {
-    let registry_set = fetch_registry_package_set_from_github(registry_version)?;
-    let index = fetch_registry_index_from_github_or_cache()?;
+async fn fetch_registry_package_set(registry_version: &str) -> Result<PackageSet> {
+    let registry_set = fetch_registry_package_set_from_github(registry_version).await?;
+    let index = fetch_registry_index_from_github_or_cache().await?;
 
     let mut package_set = HashMap::new();
 
@@ -79,13 +79,13 @@ fn fetch_registry_package_set(registry_version: &str) -> Result<PackageSet> {
     Ok(package_set)
 }
 
-fn fetch_registry_package_set_from_github(registry_version: &str) -> Result<RegistryPackageSet> {
+async fn fetch_registry_package_set_from_github(registry_version: &str) -> Result<RegistryPackageSet> {
     let url = format!("https://raw.githubusercontent.com/purescript/registry/refs/heads/main/package-sets/{}.json", registry_version);
 
     println!("Fetching package set from: {}", url);
 
     let response =
-        reqwest::blocking::get(&url).context("Failed to fetch package set from GitHub")?;
+        reqwest::get(&url).await.context("Failed to fetch package set from GitHub")?;
 
     if !response.status().is_success() {
         anyhow::bail!(
@@ -102,6 +102,7 @@ fn fetch_registry_package_set_from_github(registry_version: &str) -> Result<Regi
 
     let raw_package_set: RawPackageSet = response
         .json()
+        .await
         .context("Failed to parse package set JSON")?;
 
     let package_set = raw_package_set
@@ -113,66 +114,70 @@ fn fetch_registry_package_set_from_github(registry_version: &str) -> Result<Regi
     Ok(RegistryPackageSet(package_set))
 }
 
-fn fetch_registry_index_from_github_or_cache() -> Result<RegistryIndex> {
+async fn fetch_registry_index_from_github_or_cache() -> Result<RegistryIndex> {
     match load_registry_index_from_cache()? {
         Some(cached) => Ok(cached),
         None => {
-            let index = "https://github.com/purescript/registry-index.git";
-            let temp_dir = tempfile::tempdir()?;
-            let repo = git2::Repository::clone(index, temp_dir.path())?;
+            // Run cloning and parsing in a blocking task as it's CPU/IO heavy
+            let registry_index = tokio::task::spawn_blocking(|| {
+                let index = "https://github.com/purescript/registry-index.git";
+                let temp_dir = tempfile::tempdir()?;
+                let repo = git2::Repository::clone(index, temp_dir.path())?;
 
-            // Walk through all files in the repository
-            let mut registry_map: HashMap<PackageName, HashMap<String, RegistryPackage>> =
-                HashMap::new();
-            for entry in WalkDir::new(repo.workdir().unwrap())
-                .into_iter()
-                .filter_entry(|e| {
-                    !e.path().ends_with(".git") && !(e.file_name().to_str() == Some("README.md"))
-                })
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-            {
-                let contents = std::fs::read_to_string(entry.path())?;
-                for line in contents.lines() {
-                    if !line.trim().is_empty() {
-                        // Parse the raw JSON first into a temporary structure
-                        let raw_json: serde_json::Value = serde_json::from_str(line)?;
+                // Walk through all files in the repository
+                let mut registry_map: HashMap<PackageName, HashMap<String, RegistryPackage>> =
+                    HashMap::new();
+                for entry in WalkDir::new(repo.workdir().unwrap())
+                    .into_iter()
+                    .filter_entry(|e| {
+                        !e.path().ends_with(".git") && !(e.file_name().to_str() == Some("README.md"))
+                    })
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().is_file())
+                {
+                    let contents = std::fs::read_to_string(entry.path())?;
+                    for line in contents.lines() {
+                        if !line.trim().is_empty() {
+                            // Parse the raw JSON first into a temporary structure
+                            let raw_json: serde_json::Value = serde_json::from_str(line)?;
 
-                        // Extract the required fields to construct a RegistryPackage
-                        let name = PackageName::new(
-                            raw_json["name"]
+                            // Extract the required fields to construct a RegistryPackage
+                            let name = PackageName::new(
+                                raw_json["name"]
+                                    .as_str()
+                                    .context("No name found for package")?,
+                            );
+                            let version = raw_json["version"]
                                 .as_str()
-                                .context("No name found for package")?,
-                        );
-                        let version = raw_json["version"]
-                            .as_str()
-                            .context("Version not found")?
-                            .to_string();
+                                .context("Version not found")?
+                                .to_string();
 
-                        // Extract dependencies from the dependencies object
-                        let dependencies = raw_json["dependencies"]
-                            .as_object()
-                            .unwrap()
-                            .keys()
-                            .map(|dep| PackageName::new(dep))
-                            .collect();
+                            // Extract dependencies from the dependencies object
+                            let dependencies = raw_json["dependencies"]
+                                .as_object()
+                                .unwrap()
+                                .keys()
+                                .map(|dep| PackageName::new(dep))
+                                .collect();
 
-                        // Create the RegistryPackage
-                        let registry_package = RegistryPackage {
-                            name: name.clone(),
-                            version: version.clone(),
-                            dependencies,
-                        };
+                            // Create the RegistryPackage
+                            let registry_package = RegistryPackage {
+                                name: name.clone(),
+                                version: version.clone(),
+                                dependencies,
+                            };
 
-                        // Insert into nested HashMap structure
-                        registry_map
-                            .entry(name)
-                            .or_insert_with(HashMap::new)
-                            .insert(version, registry_package);
+                            // Insert into nested HashMap structure
+                            registry_map
+                                .entry(name)
+                                .or_insert_with(HashMap::new)
+                                .insert(version, registry_package);
+                        }
                     }
                 }
-            }
-            let registry_index = RegistryIndex(registry_map);
+                Ok::<RegistryIndex, anyhow::Error>(RegistryIndex(registry_map))
+            }).await??;
+
             // Save to cache for future use
             save_registry_index_to_cache(&registry_index)?;
             Ok(registry_index)

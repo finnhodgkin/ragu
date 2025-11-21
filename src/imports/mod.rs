@@ -20,7 +20,7 @@ pub struct ImportInfo {
 }
 
 /// Execute the imports command
-pub fn execute(location: bool, package: Option<String>, verbose: bool) -> Result<()> {
+pub async fn execute(location: bool, package: Option<String>, verbose: bool) -> Result<()> {
     if verbose {
         println!("{} Parsing imports from current project", "→".cyan());
     }
@@ -29,7 +29,7 @@ pub fn execute(location: bool, package: Option<String>, verbose: bool) -> Result
         crate::config::load_config_cwd().context("Failed to load spago.yaml configuration")?;
 
     // Use current project config for sources since that's where dependencies are installed
-    let sources = crate::sources::generate_sources(&config, None, false, false, verbose)?;
+    let sources = crate::sources::generate_sources(&config, None, false, false, verbose).await?;
 
     let package_modules = discover_all_modules(&sources)?
         .into_iter()

@@ -26,7 +26,7 @@ async fn install_all_from_config(verbose: bool) -> Result<()> {
     }
 
     // Load package set
-    let package_set = config.package_set()?;
+    let package_set = config.package_set().await?;
 
     // Install all dependencies
     let result = install_all_dependencies(&config, &package_set, false).await?;
