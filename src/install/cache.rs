@@ -42,6 +42,20 @@ impl GlobalPackageCache {
         })
     }
 
+    /// Create a GlobalPackageCache with a custom directory (for testing)
+    #[cfg(test)]
+    pub fn new_with_dir(cache_dir: PathBuf) -> Result<Self> {
+        let index_path = cache_dir.join("index.json");
+
+        fs::create_dir_all(&cache_dir)
+            .context("Failed to create global package cache directory")?;
+
+        Ok(Self {
+            cache_dir,
+            index_path,
+        })
+    }
+
     /// Load the cache index
     fn load_index(&self) -> Result<Index> {
         if !self.index_path.exists() {

@@ -264,6 +264,11 @@ async fn install_registry_package(
                 "Package {} installed with incorrect version, reinstalling...",
                 package.name.0
             );
+            // Remove the old version so the reinstall can proceed
+            fs::remove_dir_all(&package_dir).context(format!(
+                "Failed to remove outdated package directory for {}",
+                package.name.0
+            ))?;
         } else {
             return Ok(None); // Already installed
         }
@@ -396,6 +401,11 @@ fn install_git_package(
                 "Package {} installed with incorrect version, reinstalling...",
                 package.name.0
             );
+            // Remove the old version so the reinstall can proceed
+            fs::remove_dir_all(&package_dir).context(format!(
+                "Failed to remove outdated package directory for {}",
+                package.name.0
+            ))?;
         } else {
             return Ok(None); // Already installed
         }
@@ -423,4 +433,117 @@ fn install_git_package(
     )?;
 
     Ok(Some(InstalledPackage::Git(package_info)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Create a fake package directory in spago_dir with a version.txt file
+    fn create_fake_installed_package(spago_dir: &Path, name: &str, version: &str) {
+        let package_dir = spago_dir.join(name);
+        let src_dir = package_dir.join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(src_dir.join("Main.purs"), "module Main where").unwrap();
+        fs::write(package_dir.join("version.txt"), version).unwrap();
+    }
+
+    fn make_git_package(name: &str, version: &str) -> PackageSetPackage {
+        PackageSetPackage {
+            name: PackageName::new(name),
+            repo: "https://github.com/test/test.git".to_string(),
+            version: version.to_string(),
+            dependencies: vec![],
+        }
+    }
+
+    #[test]
+    fn test_git_package_version_match_skips_reinstall() {
+        let temp = TempDir::new().unwrap();
+        let spago_dir = temp.path().join(".spago");
+        fs::create_dir_all(&spago_dir).unwrap();
+
+        let cache_dir = temp.path().join("cache");
+        let global_cache = GlobalPackageCache::new_with_dir(cache_dir).unwrap();
+
+        // Install a package at v1.0.0
+        create_fake_installed_package(&spago_dir, "my-package", "v1.0.0");
+
+        // Request the same version — should return None (already installed)
+        let package = make_git_package("my-package", "v1.0.0");
+        let result = install_git_package(&package, &global_cache, &spago_dir).unwrap();
+
+        assert!(result.is_none(), "Should skip install when version matches");
+        // Directory should still exist with the original version
+        let version = fs::read_to_string(spago_dir.join("my-package/version.txt")).unwrap();
+        assert_eq!(version, "v1.0.0");
+    }
+
+    #[test]
+    fn test_git_package_version_mismatch_removes_stale_directory() {
+        let temp = TempDir::new().unwrap();
+        let spago_dir = temp.path().join(".spago");
+        fs::create_dir_all(&spago_dir).unwrap();
+
+        let cache_dir = temp.path().join("cache");
+        let global_cache = GlobalPackageCache::new_with_dir(cache_dir).unwrap();
+
+        // Simulate an already-installed package at v1.0.0
+        create_fake_installed_package(&spago_dir, "my-package", "v1.0.0");
+
+        // Pre-populate the global cache with the new version (v2.0.0)
+        // by creating a fake source and caching it
+        let fake_source = temp.path().join("fake-source");
+        let fake_src = fake_source.join("src");
+        fs::create_dir_all(&fake_src).unwrap();
+        fs::write(fake_src.join("Main.purs"), "module Main where").unwrap();
+        fs::write(fake_source.join("version.txt"), "v2.0.0").unwrap();
+        global_cache
+            .cache_package(&PackageName::new("my-package"), "v2.0.0", &fake_source)
+            .unwrap();
+
+        // Now request v2.0.0 — the stale v1.0.0 dir should be removed,
+        // and the package should be copied from the global cache
+        let package = make_git_package("my-package", "v2.0.0");
+        let result = install_git_package(&package, &global_cache, &spago_dir).unwrap();
+
+        assert!(result.is_some(), "Should install the new version from cache");
+        let installed = result.unwrap();
+        assert_eq!(installed.version(), "v2.0.0");
+
+        // The directory should now have the new version
+        let version = fs::read_to_string(spago_dir.join("my-package/version.txt")).unwrap();
+        assert_eq!(version, "v2.0.0");
+    }
+
+    #[test]
+    fn test_git_package_version_mismatch_cleans_up_even_without_cache() {
+        let temp = TempDir::new().unwrap();
+        let spago_dir = temp.path().join(".spago");
+        fs::create_dir_all(&spago_dir).unwrap();
+
+        let cache_dir = temp.path().join("cache");
+        let global_cache = GlobalPackageCache::new_with_dir(cache_dir).unwrap();
+
+        // Simulate an already-installed package at v1.0.0
+        create_fake_installed_package(&spago_dir, "my-package", "v1.0.0");
+        let package_dir = spago_dir.join("my-package");
+        assert!(package_dir.exists());
+
+        // Request v2.0.0 with nothing in the global cache.
+        // The git clone will fail (no real repo), but the stale directory
+        // should have been removed before the clone attempt.
+        let package = make_git_package("my-package", "v2.0.0");
+        let result = install_git_package(&package, &global_cache, &spago_dir);
+
+        // The install itself will fail (can't clone a fake repo), but the
+        // stale directory must have been cleaned up
+        assert!(result.is_err(), "Should fail because git clone fails");
+        assert!(
+            !package_dir.exists(),
+            "Stale package directory should have been removed before the clone attempt"
+        );
+    }
 }
