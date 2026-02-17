@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::registry::{PackageName, PackageSetPackage};
 
@@ -12,6 +13,41 @@ pub struct PackageInfo {
     pub local_path: std::path::PathBuf,
 }
 
+/// Build remote callbacks with credential support for both SSH and HTTPS.
+///
+/// Handles git URL rewrites (e.g. `insteadOf` / `pushInsteadOf` in .gitconfig)
+/// that redirect HTTPS URLs to SSH, by providing an SSH agent callback.
+fn build_remote_callbacks() -> git2::RemoteCallbacks<'static> {
+    let mut callbacks = git2::RemoteCallbacks::new();
+    let attempts = AtomicUsize::new(0);
+
+    callbacks.credentials(move |url, username_from_url, allowed_types| {
+        // Prevent infinite retry loops — git2 re-calls this callback on failure
+        if attempts.fetch_add(1, Ordering::SeqCst) > 3 {
+            return Err(git2::Error::from_str("authentication failed"));
+        }
+
+        if allowed_types.contains(git2::CredentialType::SSH_KEY) {
+            let username = username_from_url.unwrap_or("git");
+            git2::Cred::ssh_key_from_agent(username)
+        } else if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            git2::Cred::credential_helper(
+                &git2::Config::open_default()?,
+                url,
+                username_from_url,
+            )
+        } else if allowed_types.contains(git2::CredentialType::DEFAULT) {
+            git2::Cred::default()
+        } else {
+            Err(git2::Error::from_str(
+                "no supported authentication method available",
+            ))
+        }
+    });
+
+    callbacks
+}
+
 /// Fetch a package from its Git repository
 pub fn fetch_package(package: &PackageSetPackage, spago_dir: &Path) -> Result<PackageInfo> {
     let package_name = package.name.clone();
@@ -19,9 +55,8 @@ pub fn fetch_package(package: &PackageSetPackage, spago_dir: &Path) -> Result<Pa
     let package_dir = spago_dir.join(&folder_name);
 
     // Clone the repository and checkout the specific tag
-    let callbacks = git2::RemoteCallbacks::new();
     let mut fetch_options = git2::FetchOptions::new();
-    fetch_options.remote_callbacks(callbacks);
+    fetch_options.remote_callbacks(build_remote_callbacks());
 
     let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(fetch_options);
