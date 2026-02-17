@@ -59,9 +59,13 @@ pub struct WorkspaceConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BuildOptsConfig {
     #[serde(default)]
     pub output: Option<String>,
+    /// When true, excludes ./src/**/*.purs from sources when building from the workspace root.
+    #[serde(default)]
+    pub skip_root_src: bool,
 }
 
 /// Purescript PSA options
@@ -196,6 +200,14 @@ impl SpagoConfig {
 
     pub fn is_workspace_root(&self) -> bool {
         self.workspace_root == PathBuf::from(".")
+    }
+
+    pub fn skip_root_src(&self) -> bool {
+        self.workspace
+            .build_opts
+            .as_ref()
+            .map(|opts| opts.skip_root_src)
+            .unwrap_or(false)
     }
 }
 

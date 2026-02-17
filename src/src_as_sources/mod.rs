@@ -87,13 +87,18 @@ fn discover_all_modules(
         .into_iter()
         .map(|g| g.glob_pattern.clone())
         .collect::<Vec<String>>();
-    all_globs.push(sources.main_sources.clone());
+    if let Some(main) = &sources.main_sources {
+        all_globs.push(main.clone());
+    }
 
     // Build a mapping from module names to ModuleInfo from all sources
     let module_to_info: HashMap<String, ModuleInfo> = build_module_mapping(&all_globs)?;
 
     // Get main source files
-    let mut main_files = get_files_from_glob(&sources.main_sources)?;
+    let mut main_files = match &sources.main_sources {
+        Some(main) => get_files_from_glob(main)?,
+        None => Vec::new(),
+    };
 
     if include_test_sources {
         main_files.extend(get_files_from_glob(&TEST_SOURCES)?);

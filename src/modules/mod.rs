@@ -27,8 +27,10 @@ pub fn discover_all_modules(sources: &BuildSources) -> Result<Vec<ModuleInfo>> {
     let mut modules = Vec::new();
 
     // Discover modules from main sources
-    let main_modules = discover_modules_from_glob(&sources.main_sources, "main")?;
-    modules.extend(main_modules);
+    if let Some(main) = &sources.main_sources {
+        let main_modules = discover_modules_from_glob(main, "main")?;
+        modules.extend(main_modules);
+    }
 
     // Discover modules from dependency sources
     for dependency_glob in &sources.dependency_globs {

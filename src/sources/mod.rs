@@ -13,8 +13,8 @@ use crate::registry::{Package, PackageName, PackageQuery, PackageSet};
 pub struct BuildSources {
     /// Source globs for each dependency package
     pub dependency_globs: Vec<DependencyGlob>,
-    /// Main source files (src/**/*.purs)
-    pub main_sources: String,
+    /// Main source files (src/**/*.purs), None when skipRootSrc is enabled at the workspace root
+    pub main_sources: Option<String>,
 }
 
 /// Source globs for a specific dependency
@@ -43,7 +43,9 @@ pub async fn execute_sources(verbose: bool) -> Result<()> {
     let sources = generate_sources(&config, None, false, false, verbose).await?;
 
     // Output main sources
-    println!("{}", sources.main_sources);
+    if let Some(main) = &sources.main_sources {
+        println!("{}", main);
+    }
 
     // Output dependency sources
     for glob in &sources.dependency_globs {
@@ -112,7 +114,12 @@ pub async fn generate_sources(
         )?;
     }
 
-    let main_sources = "./src/**/*.purs".to_string();
+    let main_sources_glob = "./src/**/*.purs".to_string();
+    let main_sources = if config.is_workspace_root() && config.skip_root_src() {
+        None
+    } else {
+        Some(main_sources_glob.clone())
+    };
 
     let mut dependency_globs = Vec::new();
     // Generate globs for each dependency (including transitive ones)
@@ -125,7 +132,7 @@ pub async fn generate_sources(
             continue;
         }
         if let Some(glob) = generate_dependency_glob(&dep_name, spago_dir, &package_set, verbose)? {
-            if glob.glob_pattern != main_sources {
+            if glob.glob_pattern != main_sources_glob {
                 dependency_globs.push(glob);
             }
         }

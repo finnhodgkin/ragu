@@ -201,7 +201,7 @@ mod tests {
         assert!(result.is_ok());
         let sources = result.unwrap();
 
-        assert_eq!(sources.main_sources, "./src/**/*.purs");
+        assert_eq!(sources.main_sources, Some("./src/**/*.purs".to_string()));
         assert!(!sources.dependency_globs.is_empty());
 
         // Check that we have globs for our dependencies
@@ -249,12 +249,12 @@ mod tests {
 
         let sources = BuildSources {
             dependency_globs: vec![dependency_glob.clone()],
-            main_sources: "./src/**/*.purs".to_string(),
+            main_sources: Some("./src/**/*.purs".to_string()),
         };
 
         assert_eq!(sources.dependency_globs.len(), 1);
         assert_eq!(sources.dependency_globs[0].package_name, "test-package");
-        assert_eq!(sources.main_sources, "./src/**/*.purs");
+        assert_eq!(sources.main_sources, Some("./src/**/*.purs".to_string()));
     }
 
     #[test]
@@ -307,7 +307,7 @@ mod tests {
         assert!(result.is_ok());
         let sources = result.unwrap();
 
-        assert_eq!(sources.main_sources, "./src/**/*.purs");
+        assert_eq!(sources.main_sources, Some("./src/**/*.purs".to_string()));
         assert!(sources.dependency_globs.is_empty());
     }
 
@@ -377,6 +377,6 @@ mod tests {
 
         // Should not include the current package name in dependency globs
         assert!(!glob_names.contains(&config.package.name.0));
-        assert_eq!(sources.main_sources, "./src/**/*.purs");
+        assert_eq!(sources.main_sources, Some("./src/**/*.purs".to_string()));
     }
 }

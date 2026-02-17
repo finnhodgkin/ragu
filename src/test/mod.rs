@@ -27,7 +27,9 @@ pub async fn execute(skip_compilation: bool, verbose: bool) -> Result<()> {
             .map(|g| g.glob_pattern.clone())
             .collect::<Vec<String>>();
 
-        all_sources.push(sources.main_sources.clone());
+        if let Some(main) = &sources.main_sources {
+            all_sources.push(main.clone());
+        }
         all_sources.push(TEST_SOURCES.to_string());
 
         execute_compiler(

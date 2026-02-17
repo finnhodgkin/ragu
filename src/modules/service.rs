@@ -74,7 +74,7 @@ mod tests {
 
     fn create_test_sources() -> BuildSources {
         BuildSources {
-            main_sources: "./src/**/*.purs".to_string(),
+            main_sources: Some("./src/**/*.purs".to_string()),
             dependency_globs: vec![
                 DependencyGlob {
                     package_name: "prelude".to_string(),

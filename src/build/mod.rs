@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
+use crate::sources::BuildSources;
 use crate::{install::install_all_dependencies, test::TEST_SOURCES};
 
 /// Execute the build command
@@ -45,18 +46,7 @@ pub async fn execute(
         }
     }
 
-    // Collect all source globs into a Vec
-    let mut all_sources = sources
-        .dependency_globs
-        .iter()
-        .map(|g| g.glob_pattern.clone())
-        .collect::<Vec<String>>();
-
-    all_sources.push(sources.main_sources.clone());
-
-    if test {
-        all_sources.push(TEST_SOURCES.to_string());
-    }
+    let mut all_sources = collect_build_sources(&sources, test);
 
     // Remove any sources that don't contain any .purs files
     all_sources = all_sources
@@ -86,4 +76,64 @@ pub async fn execute(
     println!("{} Build successful", "✓".green());
 
     Ok(())
+}
+
+/// Collect all source globs for the compiler from the generated build sources.
+fn collect_build_sources(sources: &BuildSources, test: bool) -> Vec<String> {
+    let mut all_sources: Vec<String> = sources
+        .dependency_globs
+        .iter()
+        .map(|g| g.glob_pattern.clone())
+        .collect();
+
+    if let Some(main) = &sources.main_sources {
+        all_sources.push(main.clone());
+    }
+
+    if test {
+        all_sources.push(TEST_SOURCES.to_string());
+    }
+
+    all_sources
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sources::DependencyGlob;
+    use std::path::PathBuf;
+
+    fn dep_glob() -> DependencyGlob {
+        DependencyGlob {
+            package_name: "prelude".to_string(),
+            glob_pattern: ".spago/prelude/src/**/*.purs".to_string(),
+            local_path: PathBuf::from(".spago/prelude"),
+        }
+    }
+
+    #[test]
+    fn test_collect_build_sources_includes_main_sources_when_present() {
+        let sources = BuildSources {
+            main_sources: Some("./src/**/*.purs".to_string()),
+            dependency_globs: vec![dep_glob()],
+        };
+
+        let result = collect_build_sources(&sources, false);
+
+        assert!(result.contains(&"./src/**/*.purs".to_string()));
+        assert!(result.contains(&".spago/prelude/src/**/*.purs".to_string()));
+    }
+
+    #[test]
+    fn test_collect_build_sources_excludes_main_sources_when_none() {
+        let sources = BuildSources {
+            main_sources: None,
+            dependency_globs: vec![dep_glob()],
+        };
+
+        let result = collect_build_sources(&sources, false);
+
+        assert!(!result.contains(&"./src/**/*.purs".to_string()));
+        assert!(result.contains(&".spago/prelude/src/**/*.purs".to_string()));
+    }
 }
