@@ -76,6 +76,33 @@ fn map_sources_to_output_dir_impl(
         .collect()
 }
 
+/// Make a path relative to the workspace root.
+///
+/// Both `path` and `workspace_root` are expected to be relative to the current
+/// working directory. They are resolved to absolute paths first, then the result
+/// is computed as the relative path from `workspace_root` to `path`.
+///
+/// This is needed when passing paths to a child process that runs with
+/// `current_dir(workspace_root)` — arguments must be relative to that directory.
+pub fn make_path_relative_to_workspace(
+    path: &Path,
+    workspace_root: &Path,
+) -> Result<String> {
+    let cwd = std::env::current_dir().context("Failed to get current working directory")?;
+    make_path_relative_to_workspace_impl(path, workspace_root, &cwd)
+}
+
+/// Implementation that accepts cwd as a parameter for testability.
+fn make_path_relative_to_workspace_impl(
+    path: &Path,
+    workspace_root: &Path,
+    cwd: &Path,
+) -> Result<String> {
+    let abs_workspace = resolve_to_absolute(workspace_root, cwd)?;
+    let abs_path = resolve_to_absolute(path, cwd)?;
+    Ok(make_relative(&abs_path, &abs_workspace))
+}
+
 /// Map diagnostic paths from output-relative to CWD-relative.
 ///
 /// This function finds file paths in compiler diagnostic messages (in various formats:
@@ -392,5 +419,39 @@ mod tests {
 
         let result = map_diagnostic_paths_from_output_to_cwd_impl(line, &output_dir, cwd).unwrap();
         assert!(result.starts_with("output/Main.purs:5:10:"));
+    }
+
+    #[test]
+    fn test_make_path_relative_to_workspace_nested_project_with_custom_output() {
+        // Scenario: root at /project, output configured as "purs-projects",
+        // user cd'd into /project/purs-projects/app/client/review/
+        let cwd = Path::new("/project/purs-projects/app/client/review");
+        let workspace_root = Path::new("../../../..");       // relative to cwd -> /project
+        let output_dir = Path::new("../../../../purs-projects"); // workspace_root.join("purs-projects")
+
+        let result = make_path_relative_to_workspace_impl(output_dir, workspace_root, cwd).unwrap();
+        assert_eq!(result, "purs-projects");
+    }
+
+    #[test]
+    fn test_make_path_relative_to_workspace_same_dir() {
+        // Output dir is the workspace root itself
+        let cwd = Path::new("/project/app");
+        let workspace_root = Path::new("..");
+        let output_dir = Path::new("..");
+
+        let result = make_path_relative_to_workspace_impl(output_dir, workspace_root, cwd).unwrap();
+        assert_eq!(result, ".");
+    }
+
+    #[test]
+    fn test_make_path_relative_to_workspace_default_output() {
+        // Default output ("output") from a nested project
+        let cwd = Path::new("/project/packages/app");
+        let workspace_root = Path::new("../..");        // -> /project
+        let output_dir = Path::new("../../output");     // workspace_root.join("output")
+
+        let result = make_path_relative_to_workspace_impl(output_dir, workspace_root, cwd).unwrap();
+        assert_eq!(result, "output");
     }
 }

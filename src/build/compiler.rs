@@ -7,7 +7,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 use crate::build::run_from_root::{
-    map_diagnostic_paths_from_output_to_cwd, map_sources_to_output_dir,
+    make_path_relative_to_workspace, map_diagnostic_paths_from_output_to_cwd,
+    map_sources_to_output_dir,
 };
 use crate::config::PsaOptionsConfig;
 
@@ -142,9 +143,12 @@ pub async fn execute_compiler(
     // Build the purs compiler command
     let mut command: Command = compiler_command(psa_options);
 
-    // Use the config output directory to share workspace output
+    // Use the config output directory to share workspace output.
+    // The path must be relative to workspace_root since the compiler
+    // runs with current_dir(workspace_root).
     command.arg("--output");
-    command.arg(output_dir.to_string_lossy().to_string());
+    let relative_output = make_path_relative_to_workspace(output_dir, workspace_root)?;
+    command.arg(relative_output);
 
     // Add RTS arguments when memory is available for it.
     // Helps with compiler performance.
