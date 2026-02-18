@@ -31,3 +31,9 @@ runner = "ubuntu-22.04"
 
 [dist.github-custom-runners.aarch64-unknown-linux-gnu]
 runner = "ubuntu-22.04-arm"
+
+[dist.github-custom-runners.aarch64-apple-darwin]
+runner = "macos-14"
+
+[dist.github-custom-runners.x86_64-apple-darwin]
+runner = "macos-14"
