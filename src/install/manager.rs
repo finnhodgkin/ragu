@@ -171,18 +171,18 @@ impl InstallManager {
                 },
                 Err(e) => {
                     print!("\r\x1B[K"); // Clear current line
-                    print!("\rError installing package: {}", e.to_string().red());
-                    print!("\r"); // Keep error lines visible
-                    std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
+                    eprintln!("{} {}", "Error:".red().bold(), e);
                     errors.push(e.to_string());
                 }
             }
         }
 
         if !errors.is_empty() {
+            let count = errors.len();
             return Err(anyhow::anyhow!(
-                "Failed to install dependencies: {}",
-                errors.join(", ").red()
+                "Failed to install {} {}",
+                count,
+                if count == 1 { "package" } else { "packages" }
             ));
         }
 

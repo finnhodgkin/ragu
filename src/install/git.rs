@@ -69,7 +69,10 @@ pub fn fetch_package(package: &PackageSetPackage, spago_dir: &Path) -> Result<Pa
             if package_dir.exists() {
                 let _ = fs::remove_dir_all(&package_dir);
             }
-            return Err(e).context(format!("Failed to clone repository for {}", package_name.0));
+            return Err(e).context(format!(
+                "Failed to clone repository for {} ({})",
+                package_name.0, package.repo
+            ));
         }
     };
 
@@ -88,8 +91,8 @@ pub fn fetch_package(package: &PackageSetPackage, spago_dir: &Path) -> Result<Pa
             e
         })
         .context(format!(
-            "Failed to parse and checkout reference '{}' for {}",
-            package.version, package_name.0
+            "Failed to checkout ref '{}' for {} ({})",
+            package.version, package_name.0, package.repo
         ))?;
 
     // Prune the package to only keep README and src folders
