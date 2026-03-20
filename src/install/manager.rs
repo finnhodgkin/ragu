@@ -84,6 +84,7 @@ impl InstallManager {
         package_set: &PackageSet,
         config: &SpagoConfig,
         include_test_deps: bool,
+        quiet: bool,
     ) -> Result<InstallResult> {
         // Ensure .spago directory exists
         fs::create_dir_all(&self.spago_dir).context("Failed to create .spago directory")?;
@@ -134,9 +135,11 @@ impl InstallManager {
         let spago_dir = self.spago_dir.clone();
         let global_cache = Arc::new(self.global_cache.clone());
 
-        print!("\r\x1B[K"); // Clear current line
-        print!("\rStarting install...");
-        std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
+        if !quiet {
+            print!("\r\x1B[K"); // Clear current line
+            print!("\rStarting install...");
+            std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
+        }
 
         for package_name in all_packages {
             let package_set = package_set.clone();
@@ -144,8 +147,14 @@ impl InstallManager {
             let global_cache = global_cache.clone();
 
             let task = task::spawn(async move {
-                Self::install_single_package(&package_name, &package_set, &spago_dir, &global_cache)
-                    .await
+                Self::install_single_package(
+                    &package_name,
+                    &package_set,
+                    &spago_dir,
+                    &global_cache,
+                    quiet,
+                )
+                .await
             });
             tasks.push(task);
         }
@@ -158,20 +167,24 @@ impl InstallManager {
             match task.await? {
                 Ok(package_info) => match package_info {
                     Some(package) => {
-                        print!("\r\x1B[K"); // Clear current line
-                        print!(
-                            "\rInstalled {} ({})",
-                            package.name().0.bold(),
-                            package.type_str()
-                        );
-                        std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
+                        if !quiet {
+                            print!("\r\x1B[K"); // Clear current line
+                            print!(
+                                "\rInstalled {} ({})",
+                                package.name().0.bold(),
+                                package.type_str()
+                            );
+                            std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
+                        }
                         installed.push(package);
                     }
                     None => {}
                 },
                 Err(e) => {
-                    print!("\r\x1B[K"); // Clear current line
-                    eprintln!("{} {}", "Error:".red().bold(), e);
+                    if !quiet {
+                        print!("\r\x1B[K"); // Clear current line
+                        eprintln!("{} {}", "Error:".red().bold(), e);
+                    }
                     errors.push(e.to_string());
                 }
             }
@@ -186,8 +199,10 @@ impl InstallManager {
             ));
         }
 
-        print!("\r\x1B[K"); // Clear current line
-        std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
+        if !quiet {
+            print!("\r\x1B[K"); // Clear current line
+            std::io::stdout().flush().unwrap(); // Ensure output is shown immediately
+        }
 
         Ok(InstallResult { installed, errors })
     }
@@ -227,6 +242,7 @@ impl InstallManager {
         package_set: &PackageSet,
         spago_dir: &Path,
         global_cache: &GlobalPackageCache,
+        quiet: bool,
     ) -> Result<Option<InstalledPackage>> {
         let package = package_set.get(package_name).ok_or_else(|| {
             anyhow::anyhow!("Package '{}' not found in package set", package_name.0)
@@ -235,14 +251,14 @@ impl InstallManager {
         match package {
             Package::Local(_) => Ok(None), // No need to install local
             Package::Registry(package) => {
-                install_registry_package(package, global_cache, spago_dir).await
+                install_registry_package(package, global_cache, spago_dir, quiet).await
             }
             Package::Remote(package) => {
                 let package = package.clone();
                 let global_cache = global_cache.clone();
                 let spago_dir = spago_dir.to_path_buf();
                 task::spawn_blocking(move || {
-                    install_git_package(&package, &global_cache, &spago_dir)
+                    install_git_package(&package, &global_cache, &spago_dir, quiet)
                 })
                 .await?
             }
@@ -254,16 +270,19 @@ async fn install_registry_package(
     package: &RegistryPackage,
     global_cache: &GlobalPackageCache,
     spago_dir: &Path,
+    quiet: bool,
 ) -> Result<Option<InstalledPackage>> {
     let package_dir = spago_dir.join(&package.name.0);
 
     // Check if already installed
     if package_dir.exists() {
         if !package_version_matches(&package, &package_dir)? {
-            println!(
-                "Package {} installed with incorrect version, reinstalling...",
-                package.name.0
-            );
+            if !quiet {
+                println!(
+                    "Package {} installed with incorrect version, reinstalling...",
+                    package.name.0
+                );
+            }
             // Remove the old version so the reinstall can proceed
             fs::remove_dir_all(&package_dir).context(format!(
                 "Failed to remove outdated package directory for {}",
@@ -390,6 +409,7 @@ fn install_git_package(
     package: &PackageSetPackage,
     global_cache: &GlobalPackageCache,
     spago_dir: &Path,
+    quiet: bool,
 ) -> Result<Option<InstalledPackage>> {
     let folder_name = &package.name.0;
     let package_dir = spago_dir.join(&folder_name);
@@ -397,10 +417,12 @@ fn install_git_package(
     // Check if already installed
     if package_dir.exists() {
         if !git_version_matches(&package, &package_dir)? {
-            println!(
-                "Package {} installed with incorrect version, reinstalling...",
-                package.name.0
-            );
+            if !quiet {
+                println!(
+                    "Package {} installed with incorrect version, reinstalling...",
+                    package.name.0
+                );
+            }
             // Remove the old version so the reinstall can proceed
             fs::remove_dir_all(&package_dir).context(format!(
                 "Failed to remove outdated package directory for {}",
@@ -473,7 +495,7 @@ mod tests {
 
         // Request the same version — should return None (already installed)
         let package = make_git_package("my-package", "v1.0.0");
-        let result = install_git_package(&package, &global_cache, &spago_dir).unwrap();
+        let result = install_git_package(&package, &global_cache, &spago_dir, false).unwrap();
 
         assert!(result.is_none(), "Should skip install when version matches");
         // Directory should still exist with the original version
@@ -507,7 +529,7 @@ mod tests {
         // Now request v2.0.0 — the stale v1.0.0 dir should be removed,
         // and the package should be copied from the global cache
         let package = make_git_package("my-package", "v2.0.0");
-        let result = install_git_package(&package, &global_cache, &spago_dir).unwrap();
+        let result = install_git_package(&package, &global_cache, &spago_dir, false).unwrap();
 
         assert!(result.is_some(), "Should install the new version from cache");
         let installed = result.unwrap();
@@ -536,7 +558,7 @@ mod tests {
         // The git clone will fail (no real repo), but the stale directory
         // should have been removed before the clone attempt.
         let package = make_git_package("my-package", "v2.0.0");
-        let result = install_git_package(&package, &global_cache, &spago_dir);
+        let result = install_git_package(&package, &global_cache, &spago_dir, false);
 
         // The install itself will fail (can't clone a fake repo), but the
         // stale directory must have been cleaned up

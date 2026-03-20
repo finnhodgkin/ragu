@@ -15,9 +15,10 @@ pub async fn install_all_dependencies(
     config: &crate::config::SpagoConfig,
     package_set: &crate::registry::PackageSet,
     include_test_deps: bool,
+    quiet: bool,
 ) -> Result<InstallResult> {
     let manager = InstallManager::new(&config.spago_dir())?;
     manager
-        .install_packages(package_set, config, include_test_deps)
+        .install_packages(package_set, config, include_test_deps, quiet)
         .await
 }

@@ -29,7 +29,7 @@ async fn install_all_from_config(verbose: bool) -> Result<()> {
     let package_set = config.package_set().await?;
 
     // Install all dependencies
-    let result = install_all_dependencies(&config, &package_set, false).await?;
+    let result = install_all_dependencies(&config, &package_set, false, false).await?;
 
     // Clean up unused packages
     let removed_packages = cleanup_unused_packages(&config, &package_set)?;

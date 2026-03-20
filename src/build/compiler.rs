@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 use std::process::Stdio;
 use sysinfo::System;
@@ -11,6 +14,8 @@ use crate::build::run_from_root::{
     map_sources_to_output_dir,
 };
 use crate::config::PsaOptionsConfig;
+use crate::diagnostics::store;
+use crate::diagnostics::types::{CompactDiagnostic, StoredDiagnostic};
 
 const COMPILER_CMD_PSA: &str = "psa";
 const COMPILER_CMD_PURS: &str = "purs";
@@ -72,8 +77,26 @@ fn build_rts_args(total_memory_gb: u64, include_stats: bool) -> Vec<String> {
 /// - If `psa` (PureScript Adapter) options are provided AND `psa` is available in the PATH,
 ///   it constructs a `psa` command with the specified flags (censoring, verbose stats, etc.).
 /// - Otherwise, it falls back to the standard `purs compile` command.
-fn compiler_command(psa_options: &Option<PsaOptionsConfig>) -> Command {
+fn compiler_command(psa_options: &Option<PsaOptionsConfig>, ai: bool) -> Result<(Command, bool)> {
     let psa_available = which::which(COMPILER_CMD_PSA).is_ok();
+    let psa_json_supported = psa_available && psa_supports_json_errors();
+    let purs_json_supported = purs_supports_json_errors();
+
+    if ai {
+        if !psa_json_supported && !purs_json_supported {
+            anyhow::bail!(
+                "`ragu build --ai` requires JSON diagnostics support from either `psa` or `purs`"
+            );
+        }
+    }
+
+    if ai && !psa_json_supported {
+        let mut command = Command::new(COMPILER_CMD_PURS);
+        command.arg(COMPILER_ARG_COMPILE);
+        command.arg("--json-errors");
+        return Ok((command, false));
+    }
+
     match psa_options {
         Some(options) if psa_available => {
             let mut command = Command::new(COMPILER_CMD_PSA);
@@ -92,10 +115,10 @@ fn compiler_command(psa_options: &Option<PsaOptionsConfig>) -> Command {
             if options.censor_src {
                 command.arg("--censor-src");
             }
-            if options.censor_codes.len() > 0 {
+            if !options.censor_codes.is_empty() {
                 command.arg(format!("--censor-codes={}", options.censor_codes.join(",")));
             }
-            if options.filter_codes.len() > 0 {
+            if !options.filter_codes.is_empty() {
                 command.arg(format!("--filter-codes={}", options.filter_codes.join(",")));
             }
             if options.no_colors {
@@ -110,18 +133,50 @@ fn compiler_command(psa_options: &Option<PsaOptionsConfig>) -> Command {
             if options.stash {
                 command.arg("--stash");
             }
-            if options.stash_file.is_some() {
+            if let Some(stash_file) = options.stash_file.clone() {
                 command.arg("--stash-file");
-                command.arg(options.stash_file.clone().unwrap());
+                command.arg(stash_file);
             }
-            command
+            if ai {
+                command.arg("--json-errors");
+            }
+            Ok((command, true))
+        }
+        _ if ai && psa_available => {
+            let mut command = Command::new(COMPILER_CMD_PSA);
+            command.arg("--json-errors");
+            Ok((command, true))
         }
         _ => {
             let mut command = Command::new(COMPILER_CMD_PURS);
             command.arg(COMPILER_ARG_COMPILE);
-            command
+            Ok((command, false))
         }
     }
+}
+
+fn psa_supports_json_errors() -> bool {
+    std::process::Command::new(COMPILER_CMD_PSA)
+        .arg("--help")
+        .output()
+        .map(|output| {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            stdout.contains("--json-errors") || stderr.contains("--json-errors")
+        })
+        .unwrap_or(false)
+}
+
+fn purs_supports_json_errors() -> bool {
+    std::process::Command::new(COMPILER_CMD_PURS)
+        .args([COMPILER_ARG_COMPILE, "--help"])
+        .output()
+        .map(|output| {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            stdout.contains("--json-errors") || stderr.contains("--json-errors")
+        })
+        .unwrap_or(false)
 }
 
 /// Execute the purs compiler with streaming output
@@ -129,10 +184,12 @@ pub async fn execute_compiler(
     sources: &[String],
     output_dir: &PathBuf,
     workspace_root: &PathBuf,
+    spago_dir: &PathBuf,
     compiler_args: Vec<String>,
     psa_options: &Option<PsaOptionsConfig>,
     include_rts_stats: bool,
     verbose: bool,
+    ai: bool,
 ) -> Result<()> {
     if verbose {
         println!("{} Running purs compiler...", "→".cyan());
@@ -141,7 +198,7 @@ pub async fn execute_compiler(
     let total_memory = get_total_memory();
 
     // Build the purs compiler command
-    let mut command: Command = compiler_command(psa_options);
+    let (mut command, using_psa): (Command, bool) = compiler_command(psa_options, ai)?;
 
     // Use the config output directory to share workspace output.
     // The path must be relative to workspace_root since the compiler
@@ -166,9 +223,6 @@ pub async fn execute_compiler(
 
     command.args(relative_sources);
 
-    // Check if we're using psa (which flips stdout/stderr)
-    let using_psa = psa_options.is_some() && which::which(COMPILER_CMD_PSA).is_ok();
-
     // Run the compiler with streaming output
     let mut child = command
         .current_dir(workspace_root)
@@ -177,28 +231,44 @@ pub async fn execute_compiler(
         .spawn()
         .context("Failed to start purs compiler")?;
 
-    // Stream stdout and stderr concurrently using tokio tasks
-    // Note: psa flips stdout/stderr, so we need to swap them when using psa
+    // purs --json-errors sends JSON diagnostics to stdout and progress to stderr.
+    // psa flips stdout/stderr, so diagnostics end up on stderr with psa.
+    let diagnostics_on_stdout = !using_psa;
+
+    // In AI mode we buffer the entire diagnostics stream because purs outputs
+    // a single JSON blob whose string fields may contain literal newlines,
+    // making line-by-line JSON parsing unreliable.
+    let ai_diag_buffer: Option<Arc<Mutex<Vec<u8>>>> = if ai {
+        Some(Arc::new(Mutex::new(Vec::new())))
+    } else {
+        None
+    };
+
     let stdout_handle = if let Some(stdout) = child.stdout.take() {
-        // If using psa, stdout contains what should be on stderr
         let print_to_stderr = using_psa;
+        let is_diagnostics_stream = diagnostics_on_stdout;
         Some(spawn_output_streamer(
             stdout,
             print_to_stderr,
             workspace_root.clone(),
+            ai,
+            is_diagnostics_stream,
+            if is_diagnostics_stream { ai_diag_buffer.clone() } else { None },
         ))
     } else {
         None
     };
 
     let stderr_handle = if let Some(stderr) = child.stderr.take() {
-        // If using psa, stderr contains what should be on stdout.
-        // If NOT using psa, stderr goes to stderr.
         let print_to_stderr = !using_psa;
+        let is_diagnostics_stream = !diagnostics_on_stdout;
         Some(spawn_output_streamer(
             stderr,
             print_to_stderr,
             workspace_root.clone(),
+            ai,
+            is_diagnostics_stream,
+            if is_diagnostics_stream { ai_diag_buffer.clone() } else { None },
         ))
     } else {
         None
@@ -218,9 +288,52 @@ pub async fn execute_compiler(
         .await
         .context("Failed to wait for purs compiler")?;
 
+    let mut ai_diagnostics_count = 0usize;
+
+    // In AI mode, parse the buffered diagnostics stream as a whole
+    if ai {
+        let raw = ai_diag_buffer
+            .as_ref()
+            .and_then(|buf| buf.lock().ok().map(|g| g.clone()))
+            .unwrap_or_default();
+        let raw_str = String::from_utf8_lossy(&raw);
+        let mapped = map_diagnostic_paths_from_output_to_cwd(&raw_str, workspace_root)
+            .unwrap_or_else(|_| raw_str.to_string());
+
+        let diagnostics = parse_ai_diagnostics(&mapped);
+        ai_diagnostics_count = diagnostics.len();
+        for diag in &diagnostics {
+            if let Ok(encoded) = serde_json::to_string(&diag.summary) {
+                eprintln!("{}", encoded);
+            }
+        }
+
+        if let Some(sidecar_path) = store::persist_build(spago_dir, &diagnostics)? {
+            let meta = serde_json::json!({
+                "event": "diagnostics-sidecar",
+                "path": sidecar_path.to_string_lossy(),
+                "count": diagnostics.len()
+            });
+            eprintln!("{}", meta);
+        }
+    }
+
     if !status.success() {
-        eprintln!("❌ Compilation failed");
+        if ai {
+            eprintln!("{}", serde_json::json!({ "event": "compilation-failed" }));
+        } else {
+            eprintln!("❌ Compilation failed");
+        }
         std::process::exit(1);
+    }
+    if ai {
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "event": "compilation-succeeded",
+                "diagnostics": ai_diagnostics_count
+            })
+        );
     }
     if verbose {
         println!("  Compiled {} source files", sources.len());
@@ -243,9 +356,38 @@ fn spawn_output_streamer(
     stream: impl tokio::io::AsyncRead + Unpin + Send + 'static,
     print_to_stderr: bool,
     workspace_root: PathBuf,
+    ai: bool,
+    is_diagnostics_stream: bool,
+    ai_buffer: Option<Arc<Mutex<Vec<u8>>>>,
 ) -> tokio::task::JoinHandle<()> {
-    let reader = BufReader::new(stream);
     tokio::spawn(async move {
+        if ai && is_diagnostics_stream {
+            // Buffer the entire diagnostics stream. purs outputs a single JSON
+            // blob whose message fields may contain literal newlines, so we
+            // cannot safely split on lines and parse per-line.
+            let mut reader = stream;
+            let mut buf = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut reader, &mut buf)
+                .await
+                .ok();
+            if let Some(shared) = &ai_buffer {
+                if let Ok(mut guard) = shared.lock() {
+                    *guard = buf;
+                }
+            }
+            return;
+        }
+
+        if ai {
+            // Non-diagnostics stream in AI mode: silently drop (progress lines)
+            let reader = BufReader::new(stream);
+            let mut lines = reader.lines();
+            while let Ok(Some(_)) = lines.next_line().await {}
+            return;
+        }
+
+        // Normal (non-AI) mode: stream line-by-line with path remapping
+        let reader = BufReader::new(stream);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let mapped_line = map_diagnostic_paths_from_output_to_cwd(&line, &workspace_root)
@@ -260,6 +402,137 @@ fn spawn_output_streamer(
     })
 }
 
+/// Parse a line of compiler output into zero or more diagnostics.
+///
+/// Handles two formats:
+/// 1. `purs --json-errors` envelope: `{"warnings":[...],"errors":[...]}`
+/// 2. Individual diagnostic objects (e.g. from psa per-line output)
+fn parse_ai_diagnostics(line: &str) -> Vec<StoredDiagnostic> {
+    let value: Value = match serde_json::from_str(line) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+
+    let object = match value.as_object() {
+        Some(o) => o,
+        None => return vec![],
+    };
+
+    // Format 1: purs envelope with "warnings" and "errors" arrays
+    if object.contains_key("warnings") || object.contains_key("errors") {
+        let mut results = Vec::new();
+        if let Some(warnings) = object.get("warnings").and_then(|v| v.as_array()) {
+            for w in warnings {
+                if let Some(diag) = extract_single_diagnostic(w, "warning") {
+                    results.push(diag);
+                }
+            }
+        }
+        if let Some(errors) = object.get("errors").and_then(|v| v.as_array()) {
+            for e in errors {
+                if let Some(diag) = extract_single_diagnostic(e, "error") {
+                    results.push(diag);
+                }
+            }
+        }
+        return results;
+    }
+
+    // Format 2: individual diagnostic object
+    if let Some(diag) = extract_single_diagnostic(&value, "error") {
+        return vec![diag];
+    }
+
+    vec![]
+}
+
+fn extract_single_diagnostic(value: &Value, default_severity: &str) -> Option<StoredDiagnostic> {
+    let object = value.as_object()?;
+
+    let file = get_string_field(object, &["filename", "name"])?;
+    let severity = get_string_field(object, &["type", "severity"])
+        .unwrap_or_else(|| default_severity.to_string())
+        .to_lowercase();
+    let kind = get_string_field(object, &["errorCode", "code", "error"])
+        .unwrap_or_else(|| "compiler-diagnostic".to_string());
+
+    let position = object.get("position").and_then(|p| p.as_object());
+    let line_num = position
+        .and_then(|p| p.get("startLine").and_then(|v| v.as_u64()))
+        .or_else(|| object.get("line").and_then(|v| v.as_u64()));
+    let column_num = position
+        .and_then(|p| p.get("startColumn").and_then(|v| v.as_u64()))
+        .or_else(|| object.get("column").and_then(|v| v.as_u64()));
+
+    let hint = get_string_field(object, &["message", "hint", "errorLink"]).map(|h| {
+        let max = 120usize;
+        if h.len() > max {
+            format!("{}...", &h[..max])
+        } else {
+            h
+        }
+    });
+
+    let id = hash_diagnostic_id(
+        &severity,
+        &kind,
+        &file,
+        line_num.unwrap_or_default(),
+        column_num.unwrap_or_default(),
+        object
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or_default(),
+    );
+
+    Some(StoredDiagnostic {
+        summary: CompactDiagnostic {
+            id,
+            severity,
+            kind,
+            file,
+            line: line_num,
+            column: column_num,
+            hint,
+        },
+        full: value.clone(),
+    })
+}
+
+fn get_string_field(
+    obj: &serde_json::Map<String, Value>,
+    candidates: &[&str],
+) -> Option<String> {
+    candidates.iter().find_map(|key| {
+        obj.get(*key)
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string)
+    })
+}
+
+fn hash_diagnostic_id(
+    severity: &str,
+    kind: &str,
+    file: &str,
+    line: u64,
+    column: u64,
+    message: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(severity.as_bytes());
+    hasher.update([0]);
+    hasher.update(kind.as_bytes());
+    hasher.update([0]);
+    hasher.update(file.as_bytes());
+    hasher.update([0]);
+    hasher.update(line.to_string().as_bytes());
+    hasher.update([0]);
+    hasher.update(column.to_string().as_bytes());
+    hasher.update([0]);
+    hasher.update(message.as_bytes());
+    hex::encode(hasher.finalize())[..16].to_string()
+}
+
 fn get_total_memory() -> u64 {
     let mut sys = System::new_all();
     sys.refresh_all();
@@ -269,6 +542,7 @@ fn get_total_memory() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     // Helper to create a default PsaOptionsConfig for testing
     fn default_psa_options() -> PsaOptionsConfig {
@@ -289,8 +563,87 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_ai_diagnostics_single_object() {
+        let line = json!({
+            "filename": "src/Main.purs",
+            "type": "warning",
+            "errorCode": "UnusedImport",
+            "position": {
+                "startLine": 8,
+                "startColumn": 2
+            },
+            "message": "Unused import Data.Maybe"
+        })
+        .to_string();
+
+        let parsed = parse_ai_diagnostics(&line);
+        assert_eq!(parsed.len(), 1);
+
+        let diag = &parsed[0];
+        assert_eq!(diag.summary.severity, "warning");
+        assert_eq!(diag.summary.kind, "UnusedImport");
+        assert_eq!(diag.summary.file, "src/Main.purs");
+        assert_eq!(diag.summary.line, Some(8));
+        assert_eq!(diag.summary.column, Some(2));
+        assert!(!diag.summary.id.is_empty());
+    }
+
+    #[test]
+    fn test_parse_ai_diagnostics_purs_envelope() {
+        let line = json!({
+            "warnings": [{
+                "filename": "src/Lib.purs",
+                "errorCode": "UnusedImport",
+                "position": { "startLine": 3, "startColumn": 1 },
+                "message": "Unused import",
+                "suggestion": null
+            }],
+            "errors": [{
+                "moduleName": "Main",
+                "errorCode": "UnknownName",
+                "errorLink": "https://example.com",
+                "message": "  Unknown value foo\n",
+                "filename": "src/Main.purs",
+                "position": { "startLine": 17, "startColumn": 11, "endLine": 17, "endColumn": 20 },
+                "suggestion": null
+            }]
+        })
+        .to_string();
+
+        let parsed = parse_ai_diagnostics(&line);
+        assert_eq!(parsed.len(), 2);
+
+        assert_eq!(parsed[0].summary.severity, "warning");
+        assert_eq!(parsed[0].summary.kind, "UnusedImport");
+        assert_eq!(parsed[0].summary.file, "src/Lib.purs");
+
+        assert_eq!(parsed[1].summary.severity, "error");
+        assert_eq!(parsed[1].summary.kind, "UnknownName");
+        assert_eq!(parsed[1].summary.file, "src/Main.purs");
+        assert_eq!(parsed[1].summary.line, Some(17));
+        assert_eq!(parsed[1].summary.column, Some(11));
+    }
+
+    #[test]
+    fn test_parse_ai_diagnostics_ignores_progress_lines() {
+        let line = "[   5 of 1143] Skipping SpeakerManagement.Speakers.Table";
+        let parsed = parse_ai_diagnostics(line);
+        assert!(parsed.is_empty());
+    }
+
+    #[test]
+    fn test_hash_diagnostic_id_is_stable() {
+        let a = hash_diagnostic_id("error", "UnknownName", "src/Main.purs", 3, 9, "foo");
+        let b = hash_diagnostic_id("error", "UnknownName", "src/Main.purs", 3, 9, "foo");
+        let c = hash_diagnostic_id("error", "UnknownName", "src/Main.purs", 3, 9, "bar");
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
     fn test_compiler_command_uses_purs_when_no_options() {
-        let command = compiler_command(&None);
+        let (command, _) = compiler_command(&None, false).unwrap();
         let debug = format!("{:?}", command);
         assert!(debug.contains("purs"));
         assert!(debug.contains("compile"));
@@ -301,7 +654,7 @@ mod tests {
         // Even with options, should fall back to purs if psa not available
         // (This test might pass or fail depending on whether psa is installed)
         let options = Some(default_psa_options());
-        let command = compiler_command(&options);
+        let (command, _) = compiler_command(&options, false).unwrap();
         let debug = format!("{:?}", command);
         // Will be either purs or psa depending on system
         assert!(debug.contains("purs") || debug.contains("psa"));
@@ -311,7 +664,7 @@ mod tests {
     fn test_compiler_command_with_verbose_stats() {
         let mut options = default_psa_options();
         options.verbose_stats = true;
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         // Only check for the flag if psa is available
@@ -324,7 +677,7 @@ mod tests {
     fn test_compiler_command_with_verbose_warnings() {
         let mut options = default_psa_options();
         options.verbose_warnings = true;
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         if which::which("psa").is_ok() {
@@ -338,7 +691,7 @@ mod tests {
         options.censor_warnings = true;
         options.censor_lib = true;
         options.censor_src = true;
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         if which::which("psa").is_ok() {
@@ -352,7 +705,7 @@ mod tests {
     fn test_compiler_command_with_censor_codes() {
         let mut options = default_psa_options();
         options.censor_codes = vec!["Error1".to_string(), "Error2".to_string()];
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         if which::which("psa").is_ok() {
@@ -364,7 +717,7 @@ mod tests {
     fn test_compiler_command_with_filter_codes() {
         let mut options = default_psa_options();
         options.filter_codes = vec!["Warn1".to_string(), "Warn2".to_string()];
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         if which::which("psa").is_ok() {
@@ -377,7 +730,7 @@ mod tests {
         let mut options = default_psa_options();
         options.no_colors = true;
         options.no_source = true;
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         if which::which("psa").is_ok() {
@@ -390,7 +743,7 @@ mod tests {
     fn test_compiler_command_with_strict() {
         let mut options = default_psa_options();
         options.strict = true;
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         if which::which("psa").is_ok() {
@@ -402,7 +755,7 @@ mod tests {
     fn test_compiler_command_with_stash() {
         let mut options = default_psa_options();
         options.stash = true;
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         if which::which("psa").is_ok() {
@@ -414,7 +767,7 @@ mod tests {
     fn test_compiler_command_with_stash_file() {
         let mut options = default_psa_options();
         options.stash_file = Some("my-stash.json".to_string());
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         if which::which("psa").is_ok() {
@@ -431,7 +784,7 @@ mod tests {
         options.no_colors = true;
         options.censor_lib = true;
         options.censor_codes = vec!["E1".to_string(), "E2".to_string()];
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         if which::which("psa").is_ok() {
@@ -447,7 +800,7 @@ mod tests {
     fn test_compiler_command_empty_censor_codes() {
         let mut options = default_psa_options();
         options.censor_codes = vec![];
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         // Should not include --censor-codes when empty
@@ -458,7 +811,7 @@ mod tests {
     fn test_compiler_command_empty_filter_codes() {
         let mut options = default_psa_options();
         options.filter_codes = vec![];
-        let command = compiler_command(&Some(options));
+        let (command, _) = compiler_command(&Some(options), false).unwrap();
         let debug = format!("{:?}", command);
 
         // Should not include --filter-codes when empty

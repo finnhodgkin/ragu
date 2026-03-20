@@ -101,6 +101,10 @@ pub enum Command {
         #[arg(short = 'q', long)]
         quick_build: bool,
 
+        /// Emit AI-focused compact diagnostics and sidecar lookup metadata
+        #[arg(long)]
+        ai: bool,
+
         /// Arguments to pass to the node command (everything after --)
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         compiler_args: Vec<String>,
@@ -139,6 +143,12 @@ pub enum Command {
     Cache {
         #[command(subcommand)]
         action: CacheAction,
+    },
+
+    /// Inspect AI diagnostics persisted by `ragu build --ai`
+    Diagnostics {
+        #[command(subcommand)]
+        action: DiagnosticsAction,
     },
 
     /// Show package set statistics
@@ -224,4 +234,38 @@ pub enum CacheAction {
         #[arg(short = 'a', long)]
         all: bool,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DiagnosticsAction {
+    /// Show full diagnostic details by ID from sidecar storage
+    Show {
+        /// Diagnostic id emitted by `ragu build --ai`
+        id: String,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_build_ai_flag() {
+        let cli = Cli::try_parse_from(["ragu", "build", "--ai"]).unwrap();
+        match cli.command {
+            Command::Build { ai, .. } => assert!(ai),
+            _ => panic!("expected build command"),
+        }
+    }
+
+    #[test]
+    fn parse_diagnostics_show_command() {
+        let cli = Cli::try_parse_from(["ragu", "diagnostics", "show", "abc123"]).unwrap();
+        match cli.command {
+            Command::Diagnostics { action } => match action {
+                DiagnosticsAction::Show { id } => assert_eq!(id, "abc123"),
+            },
+            _ => panic!("expected diagnostics command"),
+        }
+    }
 }

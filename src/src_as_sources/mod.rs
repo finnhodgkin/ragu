@@ -21,6 +21,7 @@ pub async fn execute(
     compiler_args: Vec<String>,
     include_rts_stats: bool,
     verbose: bool,
+    ai: bool,
 ) -> Result<()> {
     if verbose {
         println!("{} Generating source globs from src", "→".cyan());
@@ -31,7 +32,9 @@ pub async fn execute(
 
     let modules = discover_all_modules(sources, include_test_sources)?;
 
-    println!("{}", "Starting compilation".dimmed());
+    if !ai {
+        println!("{}", "Starting compilation".dimmed());
+    }
 
     if build {
         let sources = modules
@@ -42,10 +45,12 @@ pub async fn execute(
             &sources,
             &config.output_dir(),
             &config.workspace_root,
+            &config.spago_dir(),
             compiler_args,
             &config.workspace.psa_options,
             include_rts_stats,
             verbose,
+            ai,
         )
         .await?;
     } else {
@@ -59,7 +64,9 @@ pub async fn execute(
         );
     }
 
-    println!("{}", "Compilation successful".green());
+    if !ai {
+        println!("{}", "Compilation successful".green());
+    }
 
     Ok(())
 }

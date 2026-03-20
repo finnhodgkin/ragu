@@ -2,6 +2,7 @@ mod build;
 mod cache;
 mod cli;
 mod config;
+mod diagnostics;
 mod imports;
 mod init;
 mod install;

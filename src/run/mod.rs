@@ -13,7 +13,7 @@ pub async fn execute(
     let config = crate::config::load_config_cwd()?;
     if !skip_compilation {
         let package_set = config.package_set().await?;
-        install_all_dependencies(&config, &package_set, false).await?;
+        install_all_dependencies(&config, &package_set, false, false).await?;
         let sources =
             crate::sources::generate_sources(&config, None, false, false, verbose).await?;
         let mut all_sources = sources
@@ -30,10 +30,12 @@ pub async fn execute(
             &all_sources,
             &config.output_dir(),
             &config.workspace_root,
+            &config.spago_dir(),
             vec![],
             &config.workspace.psa_options,
             false,
             verbose,
+            false,
         )
         .await?;
     }

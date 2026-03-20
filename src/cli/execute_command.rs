@@ -1,11 +1,11 @@
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::cli::{CacheAction, Cli, Command};
+use crate::cli::{CacheAction, Cli, Command, DiagnosticsAction};
 use crate::registry::{PackageName, PackageQuery};
 use crate::{
-    cache, config, imports, init, install, package_info, package_sets, print_output, run,
-    src_as_sources, test, workspace,
+    cache, config, diagnostics, imports, init, install, package_info, package_sets, print_output,
+    run, src_as_sources, test, workspace,
 };
 
 use super::execution_context::ExecutionContext;
@@ -59,6 +59,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
             clear,
             exclude_test_deps,
             quick_build,
+            ai,
             compiler_args,
         } => {
             if quick_build {
@@ -68,6 +69,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     compiler_args,
                     cli.include_rts_stats,
                     cli.verbose,
+                    ai,
                 )
                 .await
             } else {
@@ -78,6 +80,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                     compiler_args,
                     cli.include_rts_stats,
                     cli.verbose,
+                    ai,
                 )
                 .await
             }
@@ -91,7 +94,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
         } => run::execute(module, quick_run, cli.verbose, node_args).await,
         Command::Sources { quick_sources } => {
             if quick_sources {
-                src_as_sources::execute(false, false, vec![], false, cli.verbose).await
+                src_as_sources::execute(false, false, vec![], false, cli.verbose, false).await
             } else {
                 crate::sources::execute_sources(cli.verbose).await
             }
@@ -99,6 +102,9 @@ pub async fn execute(cli: Cli) -> Result<()> {
         Command::Cache { action } => match action {
             CacheAction::Info => cache::info().await,
             CacheAction::Clear { all } => cache::clear(all).await,
+        },
+        Command::Diagnostics { action } => match action {
+            DiagnosticsAction::Show { id } => diagnostics::show::execute(&id).await,
         },
         Command::Stats => {
             let ctx = ExecutionContext::load().await?;

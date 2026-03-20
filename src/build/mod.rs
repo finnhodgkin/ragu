@@ -16,6 +16,7 @@ pub async fn execute(
     compiler_args: Vec<String>,
     include_rts_stats: bool,
     verbose: bool,
+    ai: bool,
 ) -> Result<()> {
     if verbose {
         println!("{} Build command executing", "→".cyan());
@@ -29,7 +30,7 @@ pub async fn execute(
 
     let package_set = config.package_set().await?;
 
-    install_all_dependencies(&config, &package_set, test).await?;
+    install_all_dependencies(&config, &package_set, test, ai).await?;
 
     // Generate source globs for dependencies
     let sources =
@@ -66,14 +67,18 @@ pub async fn execute(
         &all_sources,
         &config.output_dir(),
         &config.workspace_root,
+        &config.spago_dir(),
         compiler_args,
         &config.workspace.psa_options,
         include_rts_stats,
         verbose,
+        ai,
     )
     .await?;
 
-    println!("{} Build successful", "✓".green());
+    if !ai {
+        println!("{} Build successful", "✓".green());
+    }
 
     Ok(())
 }
